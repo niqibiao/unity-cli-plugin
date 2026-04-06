@@ -41,7 +41,7 @@ Same approach as [Playwright CLI](https://github.com/microsoft/playwright-cli) â
 
 ```bash
 # 1. Install the plugin
-claude install-plugin github:niqibiao/unity-cli-plugin
+claude plugin install github:niqibiao/unity-cli-plugin
 
 # 2. Install the Unity package (inside your project)
 claude

@@ -41,7 +41,7 @@ Claude:  完成。10 个 Cube 已在半径 5 处创建，均已添加 Rigidbody 
 
 ```bash
 # 1. 安装插件
-claude install-plugin github:niqibiao/unity-cli-plugin
+claude plugin install github:niqibiao/unity-cli-plugin
 
 # 2. 安装 Unity 包（在项目目录下）
 claude
