@@ -1,0 +1,5 @@
+.claude/
+CLAUDE.md
+__pycache__/
+*.pyc
+skills/unity-cli-command/dynamic-commands.md
