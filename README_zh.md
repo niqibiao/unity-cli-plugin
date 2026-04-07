@@ -1,16 +1,23 @@
+<div align="center">
+
 # unity-cli-plugin
 
-[License: Apache-2.0](LICENSE)
-[Unity 2022.3+](https://unity.com/)
-[Claude Code Plugin](https://claude.ai/code)
+**Unity Editor 的 Claude Code 插件 — 基于 [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)**
+
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Unity](https://img.shields.io/badge/Unity-2022.3%2B-black.svg?logo=unity)](https://unity.com/)
+[![Claude Code](https://img.shields.io/badge/Claude_Code-blueviolet.svg?logo=anthropic)](https://claude.ai/code)
+
+40+ 命令覆盖场景编辑、组件、资产、截图、性能分析等。<br/>
+依赖 **[unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)** — 基于 Roslyn 的 Unity 交互式 C# REPL。
+
+[快速开始](#快速开始) · [使用方式](#使用方式) · [命令](#命令) · [自定义命令](#自定义命令) · [架构](#架构)
 
 [English](README.md) | 中文
 
-> **依赖 [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)** — 基于 Roslyn 的 Unity 交互式 C# REPL，支持跨提交状态保持、私有成员访问、语义补全、远程运行时执行（通过 HybridCLR 支持 IL2CPP）和可扩展命令框架。
+</div>
 
 ---
-
-一个 [Claude Code](https://claude.ai/code) 的 Unity Editor 插件 —— 40+ 命令覆盖场景编辑、组件、资产、截图、性能分析等。基于 **[unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)**。
 
 ```
 你：     "创建 10 个 Cube 围成一圈，每个加上 Rigidbody"
