@@ -13,8 +13,7 @@ _CLI_DIR = os.path.dirname(os.path.abspath(__file__))
 if os.path.dirname(_CLI_DIR) not in sys.path:
     sys.path.insert(0, os.path.dirname(_CLI_DIR))
 
-PACKAGE_NAME = "com.zh1zh1.csharpconsole"
-DEFAULT_SOURCE = "https://github.com/niqibiao/unity-csharpconsole.git"
+from cli import PACKAGE_NAME, DEFAULT_SOURCE
 
 
 def find_project_root(hint=None):
@@ -102,11 +101,12 @@ def cmd_setup(root, args):
 
     if method == "local":
         local_dir = root / "Packages" / PACKAGE_NAME
+        dep_value_local = f"file:Packages/{PACKAGE_NAME}"
         if local_dir.exists():
-            if PACKAGE_NAME in deps:
+            if PACKAGE_NAME in deps and deps[PACKAGE_NAME] == dep_value_local:
                 print(f"Already installed (local): {local_dir}")
                 return 0
-            # Directory exists but not in manifest — just add it
+            # Directory exists but manifest points elsewhere (e.g. git) — update below
         else:
             rc = _clone_with_progress(source, local_dir)
             if rc != 0:
@@ -140,9 +140,23 @@ def cmd_status(root, args):
 
     from cli.core_bridge import ConsoleSession
     try:
-        s = ConsoleSession(root, args.ip, args.port, args.mode)
+        s = ConsoleSession(root, args.ip, args.port, args.mode, args.timeout)
         r = s.health()
-        print(f"service: {'OK' if r.get('ok') else 'UNREACHABLE'}")
+        if r.get("ok"):
+            data = r.get("data", {})
+            print(f"service: OK (port {args.port}, {args.mode})")
+            pkg_ver = data.get("packageVersion")
+            proto_ver = data.get("protocolVersion")
+            unity_ver = data.get("unityVersion")
+            if pkg_ver:
+                ver_parts = [pkg_ver]
+                if proto_ver is not None:
+                    ver_parts.append(f"protocol v{proto_ver}")
+                if unity_ver:
+                    ver_parts.append(f"Unity {unity_ver}")
+                print(f"version: {', '.join(ver_parts)}")
+        else:
+            print("service: UNREACHABLE")
     except Exception as e:
         print(f"service: ERROR ({e})")
     return 0
@@ -157,6 +171,7 @@ def main():
     shared.add_argument("--ip", default="127.0.0.1")
     shared.add_argument("--port", type=int, default=None)
     shared.add_argument("--mode", choices=["editor", "runtime"], default="editor")
+    shared.add_argument("--timeout", type=int, default=30, help="HTTP timeout in seconds (default: 30)")
     shared.add_argument("--json", dest="as_json", action="store_true", help="JSON output")
 
     p = argparse.ArgumentParser(prog="cs", description="Unity C# Console CLI", parents=[shared])
@@ -182,6 +197,8 @@ def main():
     sp_refresh = sub.add_parser("refresh", parents=[shared], help="Trigger asset refresh and script compilation")
     sp_refresh.add_argument("--wait", type=int, nargs="?", const=60, default=None, metavar="TIMEOUT",
                             help="Wait for refresh to complete (default timeout: 60s)")
+    sp_refresh.add_argument("--exit-playmode", action="store_true",
+                            help="Exit play mode before refreshing if needed")
 
     sub.add_parser("list-commands", parents=[shared], help="List available commands")
 
@@ -189,15 +206,30 @@ def main():
     sp_cmp.add_argument("code")
     sp_cmp.add_argument("cursor", type=int)
 
+    sp_batch = sub.add_parser("batch", parents=[shared], help="Execute multiple commands in one request")
+    sp_batch.add_argument("commands", help="JSON array of commands")
+    sp_batch.add_argument("--stop-on-error", action="store_true",
+                          help="Stop executing on first error")
+
     args = p.parse_args()
     root = find_project_root(args.project)
 
-    # Auto-detect port from refresh_state.json if not specified
+    # Auto-detect port if not specified.
+    # refresh_state.json contains the editor service port — only use it for editor mode.
     default_port = 15500 if args.mode == "runtime" else 14500
-    if args.port is None and root:
+    if args.port is None and root and args.mode != "runtime":
         args.port = detect_port(root) or default_port
     elif args.port is None:
         args.port = default_port
+
+    # Validate --wait range
+    if hasattr(args, "wait") and args.wait is not None:
+        if args.wait < 0:
+            print("Error: --wait timeout must be non-negative.", file=sys.stderr)
+            sys.exit(1)
+        if args.wait > 300:
+            print(f"Warning: --wait capped to 300s (requested {args.wait}s)", file=sys.stderr)
+            args.wait = 300
 
     # Pre-setup commands
     if args.cmd == "setup":
@@ -215,13 +247,13 @@ def main():
 
     from cli.core_bridge import ConsoleSession
     try:
-        s = ConsoleSession(root, args.ip, args.port, args.mode)
+        s = ConsoleSession(root, args.ip, args.port, args.mode, args.timeout)
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
     def _refresh():
-        r = s.refresh()
+        r = s.refresh(exit_playmode=getattr(args, "exit_playmode", False))
         if args.wait is not None:
             if r.get("ok"):
                 r = s.wait_ready(timeout=args.wait)
@@ -236,6 +268,7 @@ def main():
         "refresh":  _refresh,
         "list-commands": lambda: s.list_commands(),
         "complete": lambda: s.complete(args.code, args.cursor),
+        "batch":    lambda: s.batch(args.commands, args.stop_on_error),
     }
 
     result = dispatch[args.cmd]()

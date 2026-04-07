@@ -1,11 +1,15 @@
 """Dynamic bridge to csharpconsole_core from an installed Unity package."""
 
+import json
 import os
 import sys
+import time
 from pathlib import Path
 
-PACKAGE_NAME = "com.zh1zh1.csharpconsole"
+from cli import PACKAGE_NAME
+
 CORE_RELATIVE = Path("Editor/ExternalTool~/console-client")
+_RETRY_DELAY_S = 1
 
 
 def resolve(project_root):
@@ -51,10 +55,43 @@ def _ensure_path(core_path):
         sys.path.insert(0, sp)
 
 
+def _make_post_with_retry(transport_http, state, default_timeout):
+    """Create a POST function that retries once on connection errors."""
+    # csharpconsole_core uses `requests`; import conditionally for the
+    # exception type so we stay compatible if the core ever switches to stdlib.
+    try:
+        import requests
+        _retry_errors = (requests.ConnectionError, ConnectionRefusedError, OSError)
+    except ImportError:
+        _retry_errors = (ConnectionRefusedError, OSError)
+
+    def _post(endpoint, payload, timeout=None):
+        t = timeout if timeout is not None else default_timeout
+        url_base = state.current_server_base_url()
+        try:
+            return transport_http.post_json(url_base, endpoint, payload, t)
+        except _retry_errors:
+            time.sleep(_RETRY_DELAY_S)
+            return transport_http.post_json(url_base, endpoint, payload, t)
+
+    return _post
+
+
+def _coerce_args_json(cmd):
+    """Extract argsJson string from a batch command item."""
+    args = cmd.get("args")
+    if isinstance(args, dict):
+        return json.dumps(args, ensure_ascii=False)
+    args_json = cmd.get("argsJson") or args
+    if isinstance(args_json, str):
+        return args_json
+    return "{}"
+
+
 class ConsoleSession:
     """Pre-wired facade over csharpconsole_core. One-liner per command."""
 
-    def __init__(self, project_root, ip="127.0.0.1", port=14500, mode="editor"):
+    def __init__(self, project_root, ip="127.0.0.1", port=14500, mode="editor", timeout=30):
         core_path = resolve(project_root)
         _ensure_path(core_path)
 
@@ -74,10 +111,11 @@ class ConsoleSession:
         self._state = state
 
         self._session_id = client_base.generate_session_id(None)
-        self._post = lambda ep, pl, t=30: transport_http.post_json(
-            state.current_server_base_url(), ep, pl, t
-        )
+        self._post = _make_post_with_retry(transport_http, state, timeout)
         self._mode_name = lambda: state.current_mode_name()
+        # Placeholders required by csharpconsole_core API for persistent
+        # using/define directives. Empty for CLI usage; the interactive REPL
+        # populates these from DefaultUsing.cs / Defines.txt files.
         self._define = lambda: ""
         self._using = lambda: ""
 
@@ -106,10 +144,26 @@ class ConsoleSession:
             code, cursor, self._session_id,
         )
 
-    def refresh(self):
-        return self._client.request_refresh(
-            self._post, self._parser.parse_refresh_http_response, self._mode_name,
-        )
+    def refresh(self, exit_playmode=False):
+        if not exit_playmode:
+            return self._client.request_refresh(
+                self._post, self._parser.parse_refresh_http_response, self._mode_name,
+            )
+        # Bypass client_base.request_refresh to pass exitPlayModeIfNeeded payload
+        from csharpconsole_core.models import make_result, new_run_id
+        start = time.time()
+        run_id = new_run_id()
+        try:
+            raw = self._post("refresh", {"exitPlayModeIfNeeded": True})
+            return self._parser.parse_refresh_http_response(
+                raw, self._mode_name(), run_id, (time.time() - start) * 1000,
+            )
+        except Exception as e:
+            return make_result(
+                False, "bootstrap", "system_error", 3,
+                f"Refresh request failed: {e}", "",
+                self._mode_name(), run_id, (time.time() - start) * 1000,
+            )
 
     def wait_ready(self, timeout=60):
         return self._client.wait_for_service_recovery(
@@ -118,6 +172,92 @@ class ConsoleSession:
 
     def list_commands(self):
         return self.command("command", "list")
+
+    def batch(self, commands_json, stop_on_error=False):
+        """Execute multiple commands in one HTTP roundtrip via /batch endpoint."""
+        from csharpconsole_core.models import make_result, new_run_id
+        start = time.time()
+        run_id = new_run_id()
+
+        if isinstance(commands_json, str):
+            try:
+                commands = json.loads(commands_json)
+            except json.JSONDecodeError as e:
+                return make_result(
+                    False, "command", "validation_error", 1,
+                    f"Invalid JSON: {e}", "", self._mode_name(), run_id, 0,
+                )
+        else:
+            commands = commands_json
+
+        if not isinstance(commands, list):
+            return make_result(
+                False, "command", "validation_error", 1,
+                "Expected a JSON array of commands", "",
+                self._mode_name(), run_id, 0,
+            )
+
+        items = []
+        for cmd in commands:
+            if not isinstance(cmd, dict):
+                return make_result(
+                    False, "command", "validation_error", 1,
+                    "Each command must be a JSON object", "",
+                    self._mode_name(), run_id, 0,
+                )
+            items.append({
+                "commandNamespace": cmd.get("ns") or cmd.get("commandNamespace") or "",
+                "action": cmd.get("action") or "",
+                "sessionId": cmd.get("sessionId") or self._session_id,
+                "argsJson": _coerce_args_json(cmd),
+            })
+
+        payload = {"commands": items, "stopOnError": stop_on_error}
+        try:
+            raw = self._post("batch", payload)
+            # Parse the batch envelope using the same logic as other endpoints:
+            # raw is JSON text → parse envelope → extract dataJson
+            envelope = json.loads(raw) if isinstance(raw, str) else raw
+            if not isinstance(envelope, dict) or "dataJson" not in envelope:
+                return make_result(
+                    False, "command", "system_error", 3,
+                    "Invalid batch response", "", self._mode_name(), run_id,
+                    (time.time() - start) * 1000,
+                )
+
+            data_raw = envelope.get("dataJson", "{}")
+            data = json.loads(data_raw) if isinstance(data_raw, str) else data_raw
+            if not isinstance(data, dict):
+                data = {}
+
+            results_raw = data.get("resultsJson", "[]")
+            if isinstance(results_raw, str):
+                try:
+                    results_list = json.loads(results_raw)
+                except json.JSONDecodeError:
+                    results_list = []
+            else:
+                results_list = results_raw
+
+            ok = bool(envelope.get("ok"))
+            return make_result(
+                ok, "command", "" if ok else "system_error",
+                0 if ok else 3,
+                envelope.get("summary") or f"Batch: {data.get('succeeded', 0)}/{data.get('total', 0)} succeeded",
+                "", self._mode_name(), run_id, (time.time() - start) * 1000,
+                {
+                    "total": data.get("total", 0),
+                    "succeeded": data.get("succeeded", 0),
+                    "failed": data.get("failed", 0),
+                    "results": results_list,
+                },
+            )
+        except Exception as e:
+            return make_result(
+                False, "command", "system_error", 3,
+                f"Batch request failed: {e}", "", self._mode_name(), run_id,
+                (time.time() - start) * 1000,
+            )
 
     def emit(self, result):
         self._output.emit_result(result, as_json=False)
