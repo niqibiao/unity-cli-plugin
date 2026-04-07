@@ -1,16 +1,23 @@
+<div align="center">
+
 # unity-cli-plugin
 
-[License: Apache-2.0](LICENSE)
-[Unity 2022.3+](https://unity.com/)
-[Claude Code Plugin](https://claude.ai/code)
+**Claude Code plugin for Unity Editor — powered by [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)**
+
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Unity](https://img.shields.io/badge/Unity-2022.3%2B-black.svg?logo=unity)](https://unity.com/)
+[![Claude Code](https://img.shields.io/badge/Claude_Code-blueviolet.svg?logo=anthropic)](https://claude.ai/code)
+
+40+ commands for scene editing, components, assets, screenshots, profiling, and more.<br/>
+Depends on **[unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)** — a Roslyn-powered interactive C# REPL for Unity.
+
+[Quick Start](#quick-start) · [Usage](#usage) · [Commands](#commands) · [Custom Commands](#custom-commands) · [Architecture](#architecture)
 
 English | [中文](README_zh.md)
 
-> **Depends on [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)** — A Roslyn-powered interactive C# REPL for Unity with cross-submission state, private member access, semantic completion, remote runtime execution (IL2CPP via HybridCLR), and an extensible command framework.
+</div>
 
 ---
-
-A [Claude Code](https://claude.ai/code) plugin for Unity Editor — 40+ commands for scene editing, components, assets, screenshots, profiling, and more. Powered by **[unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)**.
 
 ```
 You:    "Create 10 cubes in a circle and add Rigidbody to each"
