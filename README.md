@@ -40,8 +40,9 @@ Same approach as [Playwright CLI](https://github.com/microsoft/playwright-cli) â
 **Prerequisites:** [Claude Code](https://claude.ai/code), Unity 2022.3+, Python 3.7+
 
 ```bash
-# 1. Install the plugin
-claude plugin install github:niqibiao/unity-cli-plugin
+# 1. Add the marketplace & install the plugin
+claude plugin marketplace add niqibiao/unity-cli-plugin
+claude plugin install unity-cli-plugin
 
 # 2. Install the Unity package (inside your project)
 claude

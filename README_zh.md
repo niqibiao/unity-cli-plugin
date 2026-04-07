@@ -40,8 +40,9 @@ Claude:  完成。10 个 Cube 已在半径 5 处创建，均已添加 Rigidbody 
 **前置条件：** [Claude Code](https://claude.ai/code)、Unity 2022.3+、Python 3.7+
 
 ```bash
-# 1. 安装插件
-claude plugin install github:niqibiao/unity-cli-plugin
+# 1. 添加市场源并安装插件
+claude plugin marketplace add niqibiao/unity-cli-plugin
+claude plugin install unity-cli-plugin
 
 # 2. 安装 Unity 包（在项目目录下）
 claude
