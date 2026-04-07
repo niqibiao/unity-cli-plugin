@@ -58,7 +58,7 @@ Many commands accept both `path` (hierarchy path like `"Canvas/Button"`) and `in
 | destroy | Destroy a GameObject | path: string, instanceId: int |
 | get | Get detailed info about a GameObject | path: string, instanceId: int |
 | modify | Modify a GameObject's basic properties | path: string, instanceId: int, name: string, tag: string, layer: int, active: int, isStatic: int |
-| set-parent | Change a GameObject's parent | path: string, instanceId: int, parentPath: string, parentInstanceId: int, worldPositionStays: bool |
+| set_parent | Change a GameObject's parent | path: string, instanceId: int, parentPath: string, parentInstanceId: int, worldPositionStays: bool |
 | duplicate | Duplicate a GameObject | path: string, instanceId: int, newName: string |
 
 ### component
@@ -116,8 +116,8 @@ Many commands accept both `path` (hierarchy path like `"Canvas/Button"`) and `in
 
 | action | summary | args |
 |--------|---------|------|
-| scene-view | Capture the current Scene View | savePath: string, width: int, height: int |
-| game-view | Capture the Game View | savePath: string, width: int, height: int, superSize: int |
+| scene_view | Capture the current Scene View | savePath: string, width: int, height: int |
+| game_view | Capture the Game View | savePath: string, width: int, height: int, superSize: int |
 
 ### profiler
 
@@ -176,7 +176,7 @@ python "${CLAUDE_PLUGIN_ROOT}/cli/cs.py" command --json --project "$(pwd)" <name
 ... component get '{"gameObjectPath":"Main Camera","typeName":"Camera"}'
 
 # Screenshot
-... screenshot scene-view '{"savePath":"Assets/screenshot.png"}'
+... screenshot scene_view '{"savePath":"Assets/screenshot.png"}'
 
 # Scene hierarchy with components
 ... scene hierarchy '{"depth":3,"includeComponents":true}'

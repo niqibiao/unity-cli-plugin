@@ -31,7 +31,7 @@ This is a Roslyn REPL, not a simple eval. Non-obvious capabilities:
 - **Expression auto-return** — the last expression value is returned in the result; prefer over `Debug.Log`
 - **Cross-submission state** — variables, `using`s, and types persist across `exec` calls within the session
 - **Private member access** — compiler bypasses `private`/`protected`/`internal` at compile time
-- **Pre-loaded usings** — `UnityEngine`, `System.Linq`, `System.Collections.Generic` are available by default
+- **Pre-loaded usings** — `System` and `UnityEngine` are available by default. Add `using System.Linq;` or `using System.Collections.Generic;` explicitly when needed (they persist in the session)
 
 ## Patterns
 
@@ -66,17 +66,18 @@ var go = GameObject.Find("Main Camera"); go.m_InstanceID
 ### LINQ queries over live scene
 
 ```csharp
-GameObject.FindObjectsOfType<Rigidbody>().Select(r => $"{r.name}: mass={r.mass}").ToList()
+using System.Linq; GameObject.FindObjectsOfType<Rigidbody>().Select(r => $"{r.name}: mass={r.mass}").ToList()
 ```
 
 ```csharp
+// System.Linq persists from the previous submission
 Resources.FindObjectsOfTypeAll<GameObject>().Where(g => !g.activeInHierarchy).Select(g => g.name).ToList()
 ```
 
 ### AssetDatabase
 
 ```csharp
-UnityEditor.AssetDatabase.FindAssets("t:Material").Select(g => UnityEditor.AssetDatabase.GUIDToAssetPath(g)).ToList()
+using System.Linq; UnityEditor.AssetDatabase.FindAssets("t:Material").Select(g => UnityEditor.AssetDatabase.GUIDToAssetPath(g)).ToList()
 ```
 
 ### Define reusable helpers (persists in session)
