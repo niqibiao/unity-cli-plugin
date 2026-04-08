@@ -7,6 +7,7 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Unity](https://img.shields.io/badge/Unity-2022.3%2B-black.svg?logo=unity)](https://unity.com/)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-blueviolet.svg?logo=anthropic)](https://claude.ai/code)
+[![Codex CLI](https://img.shields.io/badge/Codex_CLI-00A67E.svg?logo=openai)](https://github.com/niqibiao/unity-cli-plugin/tree/codex-plugin)
 
 40+ 命令覆盖场景编辑、组件、资产、截图、性能分析等。<br/>
 依赖 **[unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)** — 基于 Roslyn 的 Unity 交互式 C# REPL。
@@ -59,6 +60,21 @@ claude
 
 # 3. 验证
 > /unity-cli-status
+```
+
+#### Codex CLI 支持
+
+本插件也支持 [Codex CLI](https://github.com/openai/codex)，使用 `codex-plugin` 分支：
+
+```bash
+# 1. 从 codex-plugin 分支安装插件
+$plugin-creator install https://github.com/niqibiao/unity-cli-plugin/tree/codex-plugin
+
+# 2. 找到并安装插件
+/plugins  # 找到 unity-cli-plugin，执行 install
+
+# 3. 重启 Codex 并初始化
+$unity-cli-plugin:unity-cli-setup
 ```
 
 ### 使用方式
