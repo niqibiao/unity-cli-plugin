@@ -7,6 +7,7 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Unity](https://img.shields.io/badge/Unity-2022.3%2B-black.svg?logo=unity)](https://unity.com/)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-blueviolet.svg?logo=anthropic)](https://claude.ai/code)
+[![Codex CLI](https://img.shields.io/badge/Codex_CLI-00A67E.svg?logo=openai)](https://github.com/niqibiao/unity-cli-plugin/tree/codex-plugin)
 
 40+ commands for scene editing, components, assets, screenshots, profiling, and more.<br/>
 Depends on **[unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)** — a Roslyn-powered interactive C# REPL for Unity.
@@ -59,6 +60,21 @@ claude
 
 # 3. Verify
 > /unity-cli-status
+```
+
+#### Codex CLI Support
+
+This plugin also supports [Codex CLI](https://github.com/openai/codex). Use the `codex-plugin` branch:
+
+```bash
+# 1. Install the plugin from the codex-plugin branch
+$plugin-creator install https://github.com/niqibiao/unity-cli-plugin/tree/codex-plugin
+
+# 2. Find and install the plugin
+/plugins  # locate unity-cli-plugin, then run install
+
+# 3. Restart Codex and initialize
+$unity-cli-plugin:unity-cli-setup
 ```
 
 ### Usage
