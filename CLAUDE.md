@@ -50,9 +50,8 @@ Claude Code harness
 
 The CLI does **not** bundle `csharpconsole_core`. It locates and imports it at runtime from the installed Unity package to guarantee version consistency. Resolution order:
 
-1. `CS_CORE_PATH` environment variable
-2. `Packages/com.zh1zh1.csharpconsole/Editor/ExternalTool~/console-client/`
-3. `Library/PackageCache/com.zh1zh1.csharpconsole@*/Editor/ExternalTool~/console-client/`
+1. `Packages/manifest.json` `file:` entry (resolves both default and custom local paths)
+2. `Library/PackageCache/com.zh1zh1.csharpconsole@*/Editor/ExternalTool~/console-client/`
 
 `ConsoleSession` is a facade that wires up the core modules (`client_base`, `command_protocol`, `config_base`, `output`, `response_parser`, `transport_http`) into one-liner methods: `exec()`, `command()`, `batch()`, `health()`, `complete()`, `list_commands()`, `refresh()`, `emit()`.
 

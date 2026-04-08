@@ -6,43 +6,64 @@ import sys
 import time
 from pathlib import Path
 
-from cli import PACKAGE_NAME
+from cli import PACKAGE_NAME, load_pkg_path, save_pkg_path
 
 CORE_RELATIVE = Path("Editor/ExternalTool~/console-client")
 _RETRY_DELAY_S = 1
 
 
-def resolve(project_root):
-    """Find the csharpconsole_core directory. Returns Path or raises FileNotFoundError."""
-    env = os.environ.get("CS_CORE_PATH")
-    if env:
-        p = Path(env)
-        if (p / "csharpconsole_core").is_dir():
-            return p
+def _find_pkg_dir(project_root):
+    """Locate the package root directory. Returns (pkg_dir, core_path) or (None, None)."""
+    root = Path(project_root)
 
-    local = Path(project_root) / "Packages" / PACKAGE_NAME / CORE_RELATIVE
-    if (local / "csharpconsole_core").is_dir():
-        return local
+    # 1. manifest.json file: entry
+    try:
+        deps = json.loads((root / "Packages" / "manifest.json").read_text("utf-8")).get("dependencies", {})
+    except (json.JSONDecodeError, OSError):
+        deps = {}
+    value = deps.get(PACKAGE_NAME, "")
+    if value.startswith("file:"):
+        pkg_dir = (root / value[len("file:"):]).resolve()
+        candidate = pkg_dir / CORE_RELATIVE
+        if (candidate / "csharpconsole_core").is_dir():
+            return pkg_dir, candidate
 
-    cache_dir = Path(project_root) / "Library" / "PackageCache"
+    # 2. Unity package cache (git-installed packages)
+    cache_dir = root / "Library" / "PackageCache"
     if cache_dir.is_dir():
         for d in cache_dir.iterdir():
             if d.name == PACKAGE_NAME or d.name.startswith(PACKAGE_NAME + "@"):
                 candidate = d / CORE_RELATIVE
                 if (candidate / "csharpconsole_core").is_dir():
-                    return candidate
+                    return d, candidate
 
+    return None, None
+
+
+def find_package_dir(project_root):
+    """Return the package root directory, or None."""
+    cached_pkg = load_pkg_path(project_root)
+    if cached_pkg and (cached_pkg / CORE_RELATIVE / "csharpconsole_core").is_dir():
+        return cached_pkg
+    pkg_dir, _ = _find_pkg_dir(project_root)
+    if pkg_dir:
+        save_pkg_path(project_root, pkg_dir)
+        return pkg_dir
+    return None
+
+
+def resolve(project_root):
+    """Find the csharpconsole_core directory. Returns Path or raises FileNotFoundError."""
+    pkg_dir = find_package_dir(project_root)
+    if pkg_dir:
+        return pkg_dir / CORE_RELATIVE
     raise FileNotFoundError(
         f"csharpconsole_core not found in {project_root}. Run 'cs setup' first."
     )
 
 
 def is_available(project_root):
-    try:
-        resolve(project_root)
-        return True
-    except FileNotFoundError:
-        return False
+    return find_package_dir(project_root) is not None
 
 
 def _ensure_path(core_path):
