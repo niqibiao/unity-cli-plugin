@@ -117,24 +117,10 @@ jobs:
               -e 's| /unity-cli-| $unity-cli-|g' \
               {} +
 
-          # ── 6. README branding ───────────────────────────────────────
-          for readme in README.md README_zh.md; do
-            [ -f "$readme" ] || continue
-            sed -i \
-              -e 's|claude plugin marketplace add|codex plugin install|g' \
-              -e 's|Claude Code|Codex CLI|g' \
-              -e 's|claude\.ai/code|codex.com|g' \
-              -e 's|Claude_Code|Codex_CLI|g' \
-              -e 's|logo=anthropic|logo=openai|g' \
-              -e 's|Claude:|Codex:|g' \
-              -e 's|Claude |Codex |g' \
-              "$readme"
-          done
-
-          # ── 7. .gitignore ────────────────────────────────────────────
+          # ── 6. .gitignore ────────────────────────────────────────────
           [ -f .gitignore ] && sed -i 's|^\.claude/$|.codex/|' .gitignore
 
-          # ── 8. Cleanup ──────────────────────────────────────────────
+          # ── 7. Cleanup ──────────────────────────────────────────────
           rm -rf .claude-plugin 2>/dev/null || true
           rm -rf .github 2>/dev/null || true
 
