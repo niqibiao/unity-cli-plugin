@@ -1,0 +1,164 @@
+name: Convert to Codex Plugin
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Convert to Codex plugin format
+        run: |
+          set -euo pipefail
+
+          echo "=== Converting Claude Code plugin → Codex CLI plugin ==="
+
+          # ── 1. Manifest directory: .claude-plugin/ → .codex-plugin/ ──
+          if [ -d .claude-plugin ]; then
+            mkdir -p .codex-plugin
+            python3 -c "
+          import json
+          with open('.claude-plugin/plugin.json') as f:
+              data = json.load(f)
+          if 'skills' not in data:
+              data['skills'] = './skills/'
+          if 'description' in data:
+              data['description'] = data['description'].replace('Claude Code', 'Codex CLI')
+          with open('.codex-plugin/plugin.json', 'w') as f:
+              json.dump(data, f, indent=2, ensure_ascii=False)
+              f.write('\n')
+          "
+            rm -rf .claude-plugin
+            echo "[OK] .claude-plugin/ → .codex-plugin/"
+          fi
+
+          # ── 2. CLAUDE.md → AGENTS.md ─────────────────────────────────
+          if [ -f CLAUDE.md ]; then
+            python3 -c "
+          import re
+          with open('CLAUDE.md') as f:
+              text = f.read()
+          text = text.replace('Claude Code', 'Codex CLI')
+          text = text.replace('claude.ai/code', 'codex.com')
+          text = text.replace('CLAUDE.md', 'AGENTS.md')
+          text = text.replace('\${CLAUDE_PLUGIN_ROOT}', '\${CODEX_PLUGIN_ROOT}')
+          text = re.sub(r'(?<![/\w])(/unity-cli-)', r'\$unity-cli-', text)
+          text = text.replace('.claude-plugin/plugin.json   Plugin manifest', '.codex-plugin/plugin.json   Plugin manifest')
+          text = text.replace('commands/*.md                Slash command definitions', '(commands converted to skills)')
+          text = text.replace('Slash commands (commands/*.md)', 'Skills (converted from commands)')
+          text = text.replace('Slash commands in \`commands/\`', 'Skills in \`skills/\`')
+          with open('AGENTS.md', 'w') as f:
+              f.write(text)
+          "
+            rm -f CLAUDE.md
+            echo "[OK] CLAUDE.md → AGENTS.md"
+          fi
+
+          # ── 3. Convert commands/*.md → skills/*/SKILL.md ─────────────
+          if [ -d commands ]; then
+            for cmd_file in commands/*.md; do
+              [ -f "$cmd_file" ] || continue
+              basename_no_ext=$(basename "$cmd_file" .md)
+              skill_dir="skills/${basename_no_ext}"
+              mkdir -p "$skill_dir"
+              python3 -c "
+          import re
+          with open('$cmd_file') as f:
+              content = f.read()
+          fm_match = re.match(r'^---\s*\n(.*?)\n---\s*\n', content, re.DOTALL)
+          if not fm_match:
+              body = content
+              description = '${basename_no_ext} skill'
+          else:
+              fm_text = fm_match.group(1)
+              body = content[fm_match.end():]
+              desc_match = re.search(r'description:\s*[\"\\']?(.*?)[\"\\']?\s*$', fm_text, re.MULTILINE)
+              description = desc_match.group(1).strip('\"\\' ') if desc_match else '${basename_no_ext} skill'
+          new_content = '---\n'
+          new_content += 'name: ${basename_no_ext}\n'
+          new_content += f'description: >\n  {description}\n'
+          new_content += '---\n\n'
+          new_content += body
+          with open('$skill_dir/SKILL.md', 'w') as f:
+              f.write(new_content)
+          "
+              echo "  [OK] commands/${basename_no_ext}.md → skills/${basename_no_ext}/SKILL.md"
+            done
+            rm -rf commands
+            echo "[OK] commands/ → skills/ (converted)"
+          fi
+
+          # ── 4. Global text replacements ──────────────────────────────
+          find . -type f \( -name '*.md' -o -name '*.py' \) \
+            -not -path './.git/*' \
+            -exec sed -i \
+              -e 's|\${CLAUDE_PLUGIN_ROOT}|${CODEX_PLUGIN_ROOT}|g' \
+              -e 's|CLAUDE_PLUGIN_ROOT|CODEX_PLUGIN_ROOT|g' \
+              {} +
+
+          # ── 5. Skill invocation syntax: /command → $skill ────────────
+          find . -type f -name '*.md' -not -path './.git/*' \
+            -exec sed -i \
+              -e 's|`/unity-cli-|`$unity-cli-|g' \
+              -e 's|> /unity-cli-|> $unity-cli-|g' \
+              -e 's| /unity-cli-| $unity-cli-|g' \
+              {} +
+
+          # ── 6. README branding ───────────────────────────────────────
+          for readme in README.md README_zh.md; do
+            [ -f "$readme" ] || continue
+            sed -i \
+              -e 's|claude plugin marketplace add|codex plugin install|g' \
+              -e 's|Claude Code|Codex CLI|g' \
+              -e 's|claude\.ai/code|codex.com|g' \
+              -e 's|Claude_Code|Codex_CLI|g' \
+              -e 's|logo=anthropic|logo=openai|g' \
+              -e 's|Claude:|Codex:|g' \
+              -e 's|Claude |Codex |g' \
+              "$readme"
+          done
+
+          # ── 7. .gitignore ────────────────────────────────────────────
+          [ -f .gitignore ] && sed -i 's|^\.claude/$|.codex/|' .gitignore
+
+          # ── 8. Cleanup ──────────────────────────────────────────────
+          rm -rf .claude-plugin 2>/dev/null || true
+          rm -rf .github 2>/dev/null || true
+
+          echo "=== Conversion complete ==="
+
+      - name: Push to codex-plugin branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          SOURCE_SHA=$(git rev-parse --short HEAD)
+          SOURCE_MSG=$(git log -1 --format='%s')
+
+          git checkout --orphan codex-plugin-tmp
+          git add -A
+          git commit -m "sync: ${SOURCE_MSG} (from main@${SOURCE_SHA})"
+          git push origin codex-plugin-tmp:codex-plugin --force
+          echo "Pushed to codex-plugin branch"
+
+          # If triggered by a tag push, create the same tag with -codex suffix
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+            CODEX_TAG="${TAG_NAME}-codex"
+            git tag "$CODEX_TAG"
+            git push origin "$CODEX_TAG" --force
+            echo "Tagged codex-plugin branch as ${CODEX_TAG}"
+          fi
