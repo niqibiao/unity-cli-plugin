@@ -67,10 +67,11 @@ claude
 **前置条件：** [Codex CLI](https://github.com/openai/codex)、Unity 2022.3+、Python 3.7+
 
 ```bash
-# 1. 从 codex-plugin 分支安装插件
+# 1. 切换到 Unity 工程根目录，然后安装插件
+cd /path/to/your/unity-project
 $plugin-creator install https://github.com/niqibiao/unity-cli-plugin/tree/codex-plugin
 
-# 2. 找到并安装插件
+# 2. 为当前项目安装插件
 /plugins  # 找到 unity-cli-plugin，执行 install
 
 # 3. 重启 Codex 并初始化

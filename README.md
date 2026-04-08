@@ -67,10 +67,11 @@ claude
 **Prerequisites:** [Codex CLI](https://github.com/openai/codex), Unity 2022.3+, Python 3.7+
 
 ```bash
-# 1. Install the plugin from the codex-plugin branch
+# 1. cd to your Unity project root, then install the plugin
+cd /path/to/your/unity-project
 $plugin-creator install https://github.com/niqibiao/unity-cli-plugin/tree/codex-plugin
 
-# 2. Find and install the plugin
+# 2. Find and install the plugin for this project
 /plugins  # locate unity-cli-plugin, then run install
 
 # 3. Restart Codex and initialize
