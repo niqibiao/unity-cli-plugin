@@ -67,7 +67,7 @@ claude
 **前置条件：** [Codex CLI](https://github.com/openai/codex)、Unity 2022.3+、Python 3.7+
 
 ```bash
-# 1. 切换到 Unity 工程根目录，将插件安装到本仓库
+# 1. 切换到 Unity 工程根目录，将插件安装到本地项目
 cd /path/to/your/unity-project
 $plugin-creator install https://github.com/niqibiao/unity-cli-plugin/tree/codex-plugin  # 安装到 .codex/plugins/
 
