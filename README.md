@@ -12,7 +12,7 @@
 40+ commands for scene editing, components, assets, screenshots, profiling, and more.<br/>
 Depends on **[unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)** — a Roslyn-powered interactive C# REPL for Unity.
 
-[Quick Start](#quick-start) · [Usage](#usage) · [Commands](#commands) · [Custom Commands](#custom-commands) · [Architecture](#architecture)
+[Quick Start](#quick-start--claude-code) · [Usage](#usage) · [Commands](#commands) · [Custom Commands](#custom-commands) · [Architecture](#architecture)
 
 English | [中文](README_zh.md)
 
@@ -45,7 +45,7 @@ Same approach as [Playwright CLI](https://github.com/microsoft/playwright-cli) �
 | Runtime / IL2CPP         | **Yes** (HybridCLR)        | Varies               |
 
 
-### Quick Start
+### Quick Start — Claude Code
 
 **Prerequisites:** [Claude Code](https://claude.ai/code), Unity 2022.3+, Python 3.7+
 
@@ -62,9 +62,9 @@ claude
 > /unity-cli-status
 ```
 
-#### Codex CLI Support
+### Quick Start — Codex CLI
 
-This plugin also supports [Codex CLI](https://github.com/openai/codex). Use the `codex-plugin` branch:
+**Prerequisites:** [Codex CLI](https://github.com/openai/codex), Unity 2022.3+, Python 3.7+
 
 ```bash
 # 1. Install the plugin from the codex-plugin branch

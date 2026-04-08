@@ -12,7 +12,7 @@
 40+ 命令覆盖场景编辑、组件、资产、截图、性能分析等。<br/>
 依赖 **[unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)** — 基于 Roslyn 的 Unity 交互式 C# REPL。
 
-[快速开始](#快速开始) · [使用方式](#使用方式) · [命令](#命令) · [自定义命令](#自定义命令) · [架构](#架构)
+[快速开始](#快速开始--claude-code) · [使用方式](#使用方式) · [命令](#命令) · [自定义命令](#自定义命令) · [架构](#架构)
 
 [English](README.md) | 中文
 
@@ -45,7 +45,7 @@ Claude:  完成。10 个 Cube 已在半径 5 处创建，均已添加 Rigidbody 
 | 运行时 / IL2CPP     | **支持**（HybridCLR） | 视情况     |
 
 
-### 快速开始
+### 快速开始 — Claude Code
 
 **前置条件：** [Claude Code](https://claude.ai/code)、Unity 2022.3+、Python 3.7+
 
@@ -62,9 +62,9 @@ claude
 > /unity-cli-status
 ```
 
-#### Codex CLI 支持
+### 快速开始 — Codex CLI
 
-本插件也支持 [Codex CLI](https://github.com/openai/codex)，使用 `codex-plugin` 分支：
+**前置条件：** [Codex CLI](https://github.com/openai/codex)、Unity 2022.3+、Python 3.7+
 
 ```bash
 # 1. 从 codex-plugin 分支安装插件
