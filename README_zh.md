@@ -13,7 +13,7 @@
 40+ 命令覆盖场景编辑、组件、资产、截图、性能分析等。<br/>
 依赖 **[unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)** — 基于 Roslyn 的 Unity 交互式 C# REPL。
 
-[快速开始](#快速开始--claude-code) · [使用方式](#使用方式) · [命令](#命令) · [自定义命令](#自定义命令) · [架构](#架构)
+[快速开始](#-快速开始--claude-code) · [使用方式](#-使用方式) · [命令](#-命令) · [自定义命令](#-自定义命令) · [架构](#️-架构)
 
 [English](README.md) | 中文
 
@@ -26,7 +26,7 @@
 Claude:  完成。10 个 Cube 已在半径 5 处创建，均已添加 Rigidbody 组件。
 ```
 
-### 为什么用 CLI + Skill，而不是 MCP？
+### ⚡ 为什么用 CLI + Skill，而不是 MCP？
 
 与 [Playwright CLI](https://github.com/microsoft/playwright-cli) 相同的架构 —— 通过 Claude Code 的 Skill 体系暴露 CLI 命令，而非 MCP。原因：
 
@@ -46,7 +46,7 @@ Claude:  完成。10 个 Cube 已在半径 5 处创建，均已添加 Rigidbody 
 | 运行时 / IL2CPP     | **支持**（HybridCLR） | 视情况     |
 
 
-### 快速开始 — Claude Code
+### 🚀 快速开始 — Claude Code
 
 **前置条件：** [Claude Code](https://claude.ai/code)、Unity 2022.3+、Python 3+
 
@@ -63,7 +63,7 @@ claude
 > /unity-cli-status
 ```
 
-### 快速开始 — Codex CLI（实验性）
+### 🚀 快速开始 — Codex CLI（实验性）
 
 > **注意：** Codex CLI 尚未正式支持第三方插件分发。以下步骤依赖本地工作区 marketplace，后续版本可能会有变化。
 
@@ -112,7 +112,7 @@ rm -rf plugins/unity-cli-plugin/.git
 ```
 </details>
 
-### 使用方式
+### 💬 使用方式
 
 直接告诉 Claude 你想做什么：
 
@@ -125,7 +125,7 @@ rm -rf plugins/unity-cli-plugin/.git
 
 Claude 会自动选择合适的命令，或在需要时编写 C# 代码。
 
-#### 斜杠命令
+#### ⌨️ 斜杠命令
 
 
 | 命令                            | 说明              |
@@ -137,7 +137,7 @@ Claude 会自动选择合适的命令，或在需要时编写 C# 代码。
 | `/unity-cli-sync-catalog`     | 对比本地命令目录与实际命令列表 |
 
 
-#### 直接使用 CLI
+#### 💻 直接使用 CLI
 
 ```bash
 python cli/cs.py exec --json --project . "Debug.Log(\"Hello\")"
@@ -147,7 +147,7 @@ python cli/cs.py batch --json --project . '[{"ns":"gameobject","action":"create"
 python cli/cs.py list-commands --json --project . --timeout 10
 ```
 
-### 命令
+### 📦 命令
 
 12 个命名空间、46 个内置命令。所有命令支持 `--json` 输出。
 
@@ -281,7 +281,7 @@ python cli/cs.py list-commands --json --project . --timeout 10
 | `list` | 列出所有已注册命令（内置 + 自定义） |
 
 
-### 自定义命令
+### 🔧 自定义命令
 
 给任意静态方法加上 `[CommandAction]` —— 启动时自动发现，无需注册。参数从 JSON args 中按名称自动绑定。
 
@@ -318,7 +318,7 @@ public static class MyCommands
 
 运行 `/unity-cli-refresh-commands` 让 Claude 感知新命令。
 
-### 架构
+### 🏗️ 架构
 
 ```
 Claude Code                      Unity Editor
@@ -343,7 +343,7 @@ Claude Code                      Unity Editor
 
 自动检测项目根目录和服务端口，无需手动配置。
 
-### 常见问题
+### ❓ 常见问题
 
 
 | 问题                     | 解决方案                                                       |
