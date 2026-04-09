@@ -13,7 +13,7 @@
 40+ commands for scene editing, components, assets, screenshots, profiling, and more.<br/>
 Depends on **[unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)** — a Roslyn-powered interactive C# REPL for Unity.
 
-[Quick Start](#quick-start--claude-code) · [Usage](#usage) · [Commands](#commands) · [Custom Commands](#custom-commands) · [Architecture](#architecture)
+[Quick Start](#-quick-start--claude-code) · [Usage](#-usage) · [Commands](#-commands) · [Custom Commands](#-custom-commands) · [Architecture](#️-architecture)
 
 English | [中文](README_zh.md)
 
@@ -26,7 +26,7 @@ You:    "Create 10 cubes in a circle and add Rigidbody to each"
 Claude: Done. 10 cubes created at radius 5, each with a Rigidbody component.
 ```
 
-### CLI + Skills, Not MCP
+### ⚡ CLI + Skills, Not MCP
 
 Same approach as [Playwright CLI](https://github.com/microsoft/playwright-cli) — CLI commands exposed through Claude Code's skill system instead of MCP. Why:
 
@@ -46,7 +46,7 @@ Same approach as [Playwright CLI](https://github.com/microsoft/playwright-cli) �
 | Runtime / IL2CPP         | **Yes** (HybridCLR)        | Varies               |
 
 
-### Quick Start — Claude Code
+### 🚀 Quick Start — Claude Code
 
 **Prerequisites:** [Claude Code](https://claude.ai/code), Unity 2022.3+, Python 3+
 
@@ -63,7 +63,7 @@ claude
 > /unity-cli-status
 ```
 
-### Quick Start — Codex CLI (Experimental)
+### 🚀 Quick Start — Codex CLI (Experimental)
 
 > **Note:** Codex CLI does not yet officially support third-party plugin distribution. The steps below rely on the local workspace marketplace, which may change in future releases.
 
@@ -112,7 +112,7 @@ Then add to `.agents/plugins/marketplace.json`:
 ```
 </details>
 
-### Usage
+### 💬 Usage
 
 Just tell Claude what you want:
 
@@ -125,7 +125,7 @@ Just tell Claude what you want:
 
 Claude picks the right command or writes C# code as needed.
 
-#### Slash Commands
+#### ⌨️ Slash Commands
 
 
 | Command                       | Description                                  |
@@ -137,7 +137,7 @@ Claude picks the right command or writes C# code as needed.
 | `/unity-cli-sync-catalog`     | Compare local command catalog with live list |
 
 
-#### Direct CLI
+#### 💻 Direct CLI
 
 ```bash
 python cli/cs.py exec --json --project . "Debug.Log(\"Hello\")"
@@ -147,7 +147,7 @@ python cli/cs.py batch --json --project . '[{"ns":"gameobject","action":"create"
 python cli/cs.py list-commands --json --project . --timeout 10
 ```
 
-### Commands
+### 📦 Commands
 
 46 built-in commands across 12 namespaces. All commands support `--json` output.
 
@@ -281,7 +281,7 @@ python cli/cs.py list-commands --json --project . --timeout 10
 | `list` | List all registered commands (built-in + custom) |
 
 
-### Custom Commands
+### 🔧 Custom Commands
 
 Add `[CommandAction]` to any static method — auto-discovered at startup, no registration needed. Parameters are bound automatically from JSON args by name.
 
@@ -318,7 +318,7 @@ public static class MyCommands
 
 Run `/unity-cli-refresh-commands` to make Claude aware of new commands.
 
-### Architecture
+### 🏗️ Architecture
 
 ```
 Claude Code                      Unity Editor
@@ -343,7 +343,7 @@ Claude Code                      Unity Editor
 
 Auto-detects project root and service port. No manual configuration.
 
-### Troubleshooting
+### ❓ Troubleshooting
 
 
 | Problem                | Solution                                                                                   |
