@@ -21,110 +21,217 @@ jobs:
           python-version: "3.12"
 
       - name: Convert to Codex plugin format
+        shell: python3 {0}
         run: |
+          import json, re, os, stat, textwrap
+          from pathlib import Path
+
+          def info(msg): print(f"[OK] {msg}")
+
+          print("=== Converting Claude Code plugin → Codex CLI plugin ===\n")
+
+          # ── 1. Manifest: .claude-plugin/ → .codex-plugin/ ───────────
+          if Path(".claude-plugin").is_dir():
+              Path(".codex-plugin").mkdir(exist_ok=True)
+              data = json.loads(Path(".claude-plugin/plugin.json").read_text())
+              data.setdefault("skills", "./skills/")
+              if "description" in data:
+                  data["description"] = data["description"].replace("Claude Code", "Codex CLI")
+              Path(".codex-plugin/plugin.json").write_text(
+                  json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+              )
+              import shutil; shutil.rmtree(".claude-plugin")
+              info(".claude-plugin/ → .codex-plugin/")
+
+          # ── 2. CLAUDE.md → AGENTS.md ────────────────────────────────
+          if Path("CLAUDE.md").is_file():
+              text = Path("CLAUDE.md").read_text()
+              for old, new in [
+                  ("Claude Code", "Codex CLI"),
+                  ("claude.ai/code", "codex.com"),
+                  ("CLAUDE.md", "AGENTS.md"),
+                  ("${CLAUDE_PLUGIN_ROOT}", "${CODEX_PLUGIN_ROOT}"),
+                  (".claude-plugin/plugin.json   Plugin manifest",
+                   ".codex-plugin/plugin.json   Plugin manifest"),
+                  ("commands/*.md                Slash command definitions",
+                   "(commands converted to skills)"),
+                  ("Slash commands (commands/*.md)",
+                   "Skills (converted from commands)"),
+                  ("Slash commands in `commands/`",
+                   "Skills in `skills/`"),
+              ]:
+                  text = text.replace(old, new)
+              text = re.sub(r'(?<![/\w])(/unity-cli-)', r'$unity-cli-', text)
+              Path("AGENTS.md").write_text(text)
+              Path("CLAUDE.md").unlink()
+              info("CLAUDE.md → AGENTS.md")
+
+          # ── 3. Convert commands/*.md → skills/*/SKILL.md ────────────
+          cmd_dir = Path("commands")
+          if cmd_dir.is_dir():
+              for cmd_file in sorted(cmd_dir.glob("*.md")):
+                  name = cmd_file.stem
+                  content = cmd_file.read_text()
+                  fm_match = re.match(r'^---\s*\n(.*?)\n---\s*\n', content, re.DOTALL)
+                  if not fm_match:
+                      body, description = content, f"{name} skill"
+                  else:
+                      body = content[fm_match.end():]
+                      dm = re.search(r'description:\s*["\']?(.*?)["\']?\s*$',
+                                     fm_match.group(1), re.MULTILINE)
+                      description = dm.group(1).strip("\"' ") if dm else f"{name} skill"
+                  skill_dir = Path(f"skills/{name}")
+                  skill_dir.mkdir(parents=True, exist_ok=True)
+                  (skill_dir / "SKILL.md").write_text(
+                      f"---\nname: {name}\ndescription: >\n  {description}\n---\n\n{body}"
+                  )
+                  print(f"  {name}.md → skills/{name}/SKILL.md")
+              shutil.rmtree(cmd_dir)
+              info("commands/ → skills/ (converted)")
+
+          # ── 4. Global text replacements ─────────────────────────────
+          # Codex CLI does NOT support ${CODEX_PLUGIN_ROOT} as a template variable
+          # (unlike Claude Code's ${CLAUDE_PLUGIN_ROOT}). Replace with a workspace-
+          # relative path. Codex CWD is always the workspace root.
+          PLUGIN_ROOT_EXPR = './plugins/unity-cli-plugin'
+
+          for p in Path(".").rglob("*"):
+              if not p.is_file() or ".git" in p.parts:
+                  continue
+              if p.suffix not in (".md", ".py"):
+                  continue
+              text = p.read_text(errors="replace")
+              updated = text.replace("${CLAUDE_PLUGIN_ROOT}", PLUGIN_ROOT_EXPR)
+              updated = updated.replace("CLAUDE_PLUGIN_ROOT", "CODEX_PLUGIN_ROOT")
+              if p.suffix == ".md":
+                  updated = updated.replace("`/unity-cli-", "`$unity-cli-")
+                  updated = updated.replace("> /unity-cli-", "> $unity-cli-")
+                  updated = updated.replace(" /unity-cli-", " $unity-cli-")
+              if updated != text:
+                  p.write_text(updated)
+
+          # ── 5. .gitignore ───────────────────────────────────────────
+          gi = Path(".gitignore")
+          if gi.is_file():
+              gi.write_text(gi.read_text().replace(".claude/\n", ".codex/\n"))
+
+          # ── 6. Generate install.sh ──────────────────────────────────
+          install_script = textwrap.dedent(r'''
+          #!/usr/bin/env bash
           set -euo pipefail
 
-          echo "=== Converting Claude Code plugin → Codex CLI plugin ==="
+          PLUGIN_NAME="unity-cli-plugin"
+          PLUGIN_REPO="https://github.com/niqibiao/unity-cli-plugin.git"
+          PLUGIN_BRANCH="codex-plugin"
 
-          # ── 1. Manifest directory: .claude-plugin/ → .codex-plugin/ ──
-          if [ -d .claude-plugin ]; then
-            mkdir -p .codex-plugin
-            python3 -c "
-          import json
-          with open('.claude-plugin/plugin.json') as f:
-              data = json.load(f)
-          if 'skills' not in data:
-              data['skills'] = './skills/'
-          if 'description' in data:
-              data['description'] = data['description'].replace('Claude Code', 'Codex CLI')
-          with open('.codex-plugin/plugin.json', 'w') as f:
-              json.dump(data, f, indent=2, ensure_ascii=False)
-              f.write('\n')
-          "
-            rm -rf .claude-plugin
-            echo "[OK] .claude-plugin/ → .codex-plugin/"
+          die()  { echo "ERROR: $*" >&2; exit 1; }
+          info() { echo "  [*] $*"; }
+          ok()   { echo "  [OK] $*"; }
+
+          # Detect working python (python3 may be a Windows Store stub)
+          PY=""
+          for cmd in python3 python; do
+            if "$cmd" -c "import sys; sys.exit(0)" 2>/dev/null; then PY="$cmd"; break; fi
+          done
+          [ -n "$PY" ] || die "Python 3 is required but not found."
+
+          if [ $# -lt 1 ]; then
+            echo "Usage: bash install.sh <workspace-dir>"
+            echo ""
+            echo "  Installs ${PLUGIN_NAME} into the given workspace."
+            echo ""
+            echo "  <workspace-dir>  Root of your project/repo."
+            echo "                   Plugin  -> <dir>/plugins/${PLUGIN_NAME}/"
+            echo "                   Market  -> <dir>/.agents/plugins/marketplace.json"
+            exit 1
           fi
 
-          # ── 2. CLAUDE.md → AGENTS.md ─────────────────────────────────
-          if [ -f CLAUDE.md ]; then
-            python3 -c "
-          import re
-          with open('CLAUDE.md') as f:
-              text = f.read()
-          text = text.replace('Claude Code', 'Codex CLI')
-          text = text.replace('claude.ai/code', 'codex.com')
-          text = text.replace('CLAUDE.md', 'AGENTS.md')
-          text = text.replace('\${CLAUDE_PLUGIN_ROOT}', '\${CODEX_PLUGIN_ROOT}')
-          text = re.sub(r'(?<![/\w])(/unity-cli-)', r'\$unity-cli-', text)
-          text = text.replace('.claude-plugin/plugin.json   Plugin manifest', '.codex-plugin/plugin.json   Plugin manifest')
-          text = text.replace('commands/*.md                Slash command definitions', '(commands converted to skills)')
-          text = text.replace('Slash commands (commands/*.md)', 'Skills (converted from commands)')
-          text = text.replace('Slash commands in \`commands/\`', 'Skills in \`skills/\`')
-          with open('AGENTS.md', 'w') as f:
-              f.write(text)
-          "
-            rm -f CLAUDE.md
-            echo "[OK] CLAUDE.md → AGENTS.md"
+          TARGET_DIR="$(cd "$1" && pwd)" || die "Directory '$1' does not exist."
+          PLUGIN_DIR="${TARGET_DIR}/plugins/${PLUGIN_NAME}"
+          MARKETPLACE_DIR="${TARGET_DIR}/.agents/plugins"
+          MARKETPLACE_FILE="${MARKETPLACE_DIR}/marketplace.json"
+
+          echo ""
+          echo "=== Installing ${PLUGIN_NAME} into ${TARGET_DIR} ==="
+          echo ""
+
+          # ── 1. Clone or update plugin ──────────────────────────────
+          PLUGIN_TMP="${PLUGIN_DIR}.tmp.$$"
+          if [ -d "${PLUGIN_DIR}/.codex-plugin" ]; then
+            info "Plugin already exists, updating..."
+            mkdir -p "$(dirname "${PLUGIN_DIR}")"
+            git clone --depth=1 --branch "${PLUGIN_BRANCH}" --single-branch \
+              "${PLUGIN_REPO}" "${PLUGIN_TMP}" --quiet \
+              || { rm -rf "${PLUGIN_TMP}"; die "Clone failed — existing plugin left intact."; }
+            rm -rf "${PLUGIN_TMP}/.git"
+            rm -rf "${PLUGIN_DIR}"
+            mv "${PLUGIN_TMP}" "${PLUGIN_DIR}"
+            ok "Updated ${PLUGIN_DIR}"
+          elif [ ! -d "${PLUGIN_DIR}" ]; then
+            info "Cloning ${PLUGIN_REPO} (branch: ${PLUGIN_BRANCH})..."
+            mkdir -p "$(dirname "${PLUGIN_DIR}")"
+            git clone --depth=1 --branch "${PLUGIN_BRANCH}" --single-branch \
+              "${PLUGIN_REPO}" "${PLUGIN_DIR}" --quiet
+            rm -rf "${PLUGIN_DIR}/.git"
+            ok "Cloned into ${PLUGIN_DIR}"
           fi
 
-          # ── 3. Convert commands/*.md → skills/*/SKILL.md ─────────────
-          if [ -d commands ]; then
-            for cmd_file in commands/*.md; do
-              [ -f "$cmd_file" ] || continue
-              basename_no_ext=$(basename "$cmd_file" .md)
-              skill_dir="skills/${basename_no_ext}"
-              mkdir -p "$skill_dir"
-              python3 -c "
-          import re
-          with open('$cmd_file') as f:
-              content = f.read()
-          fm_match = re.match(r'^---\s*\n(.*?)\n---\s*\n', content, re.DOTALL)
-          if not fm_match:
-              body = content
-              description = '${basename_no_ext} skill'
+          # ── 2. Create or update marketplace.json ───────────────────
+          mkdir -p "${MARKETPLACE_DIR}"
+
+          export MARKETPLACE_FILE
+          $PY << 'PYEOF'
+          import json, os
+
+          plugin_name = "unity-cli-plugin"
+          mf = os.environ["MARKETPLACE_FILE"]
+          entry = {
+              "name": plugin_name,
+              "source": {"source": "local", "path": f"./plugins/{plugin_name}"},
+              "policy": {"installation": "INSTALLED_BY_DEFAULT", "authentication": "ON_INSTALL"},
+              "category": "Productivity"
+          }
+
+          if os.path.isfile(mf):
+              with open(mf) as f:
+                  data = json.load(f)
+              plugins = data.setdefault("plugins", [])
+              idx = next((i for i, p in enumerate(plugins) if p.get("name") == plugin_name), None)
+              if idx is not None:
+                  plugins[idx] = entry
+                  print(f"  [OK] Updated existing {plugin_name} entry in marketplace.json")
+              else:
+                  plugins.append(entry)
+                  print(f"  [OK] Added {plugin_name} to marketplace.json")
           else:
-              fm_text = fm_match.group(1)
-              body = content[fm_match.end():]
-              desc_match = re.search(r'description:\s*[\"\\']?(.*?)[\"\\']?\s*$', fm_text, re.MULTILINE)
-              description = desc_match.group(1).strip('\"\\' ') if desc_match else '${basename_no_ext} skill'
-          new_content = '---\n'
-          new_content += 'name: ${basename_no_ext}\n'
-          new_content += f'description: >\n  {description}\n'
-          new_content += '---\n\n'
-          new_content += body
-          with open('$skill_dir/SKILL.md', 'w') as f:
-              f.write(new_content)
-          "
-              echo "  [OK] commands/${basename_no_ext}.md → skills/${basename_no_ext}/SKILL.md"
-            done
-            rm -rf commands
-            echo "[OK] commands/ → skills/ (converted)"
-          fi
+              data = {"name": "local-workspace", "plugins": [entry]}
+              print("  [OK] Created marketplace.json")
 
-          # ── 4. Global text replacements ──────────────────────────────
-          find . -type f \( -name '*.md' -o -name '*.py' \) \
-            -not -path './.git/*' \
-            -exec sed -i \
-              -e 's|\${CLAUDE_PLUGIN_ROOT}|${CODEX_PLUGIN_ROOT}|g' \
-              -e 's|CLAUDE_PLUGIN_ROOT|CODEX_PLUGIN_ROOT|g' \
-              {} +
+          with open(mf, "w") as f:
+              json.dump(data, f, indent=2, ensure_ascii=False)
+              f.write("\n")
+          PYEOF
 
-          # ── 5. Skill invocation syntax: /command → $skill ────────────
-          find . -type f -name '*.md' -not -path './.git/*' \
-            -exec sed -i \
-              -e 's|`/unity-cli-|`$unity-cli-|g' \
-              -e 's|> /unity-cli-|> $unity-cli-|g' \
-              -e 's| /unity-cli-| $unity-cli-|g' \
-              {} +
+          echo ""
+          echo "=== Installation complete ==="
+          echo ""
+          echo "Next steps:"
+          echo "  1. Open your Unity project in Unity Editor"
+          echo "  2. Start Codex CLI in ${TARGET_DIR}"
+          echo '  3. Run: $unity-cli-setup   (installs the Unity C# Console package)'
+          echo '  4. Run: $unity-cli-status  (verify connection)'
+          echo ""
+          ''').lstrip('\n')
 
-          # ── 6. .gitignore ────────────────────────────────────────────
-          [ -f .gitignore ] && sed -i 's|^\.claude/$|.codex/|' .gitignore
+          Path("install.sh").write_text(install_script, newline='\n')
+          os.chmod("install.sh", os.stat("install.sh").st_mode | stat.S_IEXEC)
+          info("install.sh generated")
 
           # ── 7. Cleanup ──────────────────────────────────────────────
-          rm -rf .claude-plugin 2>/dev/null || true
-          rm -rf .github 2>/dev/null || true
+          shutil.rmtree(".claude-plugin", ignore_errors=True)
+          shutil.rmtree(".github", ignore_errors=True)
 
-          echo "=== Conversion complete ==="
+          print("\n=== Conversion complete ===")
 
       - name: Push to codex-plugin branch
         run: |

@@ -2,7 +2,8 @@
 
 # unity-cli-plugin
 
-**Claude Code plugin for Unity Editor — powered by [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)**
+**AI coding agent plugin for Unity Editor — supports Claude Code & Codex CLI**<br/>
+**Powered by [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)**
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Unity](https://img.shields.io/badge/Unity-2022.3%2B-black.svg?logo=unity)](https://unity.com/)
@@ -47,7 +48,7 @@ Same approach as [Playwright CLI](https://github.com/microsoft/playwright-cli) �
 
 ### Quick Start — Claude Code
 
-**Prerequisites:** [Claude Code](https://claude.ai/code), Unity 2022.3+, Python 3.7+
+**Prerequisites:** [Claude Code](https://claude.ai/code), Unity 2022.3+, Python 3+
 
 ```bash
 # 1. Add the marketplace & install the plugin
@@ -62,21 +63,54 @@ claude
 > /unity-cli-status
 ```
 
-### Quick Start — Codex CLI
+### Quick Start — Codex CLI (Experimental)
 
-**Prerequisites:** [Codex CLI](https://github.com/openai/codex), Unity 2022.3+, Python 3.7+
+> **Note:** Codex CLI does not yet officially support third-party plugin distribution. The steps below rely on the local workspace marketplace, which may change in future releases.
+
+**Prerequisites:** [Codex CLI](https://github.com/openai/codex), Unity 2022.3+, Python 3+
 
 ```bash
-# 1. cd to your Unity project root, then install the plugin
+# 1. Start Codex in your Unity project
 cd /path/to/your/unity-project
-$plugin-creator install https://github.com/niqibiao/unity-cli-plugin/tree/codex-plugin  # installs into local project
+codex
 
-# 2. Find and install the plugin for this project
-/plugins  # locate unity-cli-plugin, then run install
+# 2. Tell Codex to clone and install the plugin:
+#    "Clone https://github.com/niqibiao/unity-cli-plugin/tree/codex-plugin
+#     then run install.sh with the current directory"
 
-# 3. Restart Codex and initialize
-$unity-cli-plugin:unity-cli-setup
+# 3. Restart Codex, find and install the plugin
+/plugins              # locate unity-cli-plugin → Install
+
+# 4. Restart Codex again, then initialize the Unity package
+$unity-cli-setup
+
+# 5. Verify
+$unity-cli-status
 ```
+
+<details>
+<summary>Manual install / already have a marketplace</summary>
+
+```bash
+cd /path/to/your/unity-project
+git clone --depth=1 -b codex-plugin https://github.com/niqibiao/unity-cli-plugin.git plugins/unity-cli-plugin
+rm -rf plugins/unity-cli-plugin/.git
+```
+
+Then add to `.agents/plugins/marketplace.json`:
+
+```jsonc
+{
+  "name": "local-workspace",
+  "plugins": [{
+    "name": "unity-cli-plugin",
+    "source": { "source": "local", "path": "./plugins/unity-cli-plugin" },
+    "policy": { "installation": "INSTALLED_BY_DEFAULT", "authentication": "ON_INSTALL" },
+    "category": "Productivity"
+  }]
+}
+```
+</details>
 
 ### Usage
 

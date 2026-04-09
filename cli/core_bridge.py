@@ -23,7 +23,8 @@ def _find_pkg_dir(project_root):
         deps = {}
     value = deps.get(PACKAGE_NAME, "")
     if value.startswith("file:"):
-        pkg_dir = (root / value[len("file:"):]).resolve()
+        # file: paths are relative to the Packages/ folder (where manifest.json lives)
+        pkg_dir = (root / "Packages" / value[len("file:"):]).resolve()
         candidate = pkg_dir / CORE_RELATIVE
         if (candidate / "csharpconsole_core").is_dir():
             return pkg_dir, candidate
@@ -40,21 +41,23 @@ def _find_pkg_dir(project_root):
     return None, None
 
 
-def find_package_dir(project_root):
+def find_package_dir(project_root, agent_root=None):
     """Return the package root directory, or None."""
-    cached_pkg = load_pkg_path(project_root)
-    if cached_pkg and (cached_pkg / CORE_RELATIVE / "csharpconsole_core").is_dir():
-        return cached_pkg
+    if agent_root:
+        cached_pkg = load_pkg_path(agent_root)
+        if cached_pkg and (cached_pkg / CORE_RELATIVE / "csharpconsole_core").is_dir():
+            return cached_pkg
     pkg_dir, _ = _find_pkg_dir(project_root)
     if pkg_dir:
-        save_pkg_path(project_root, pkg_dir)
+        if agent_root:
+            save_pkg_path(agent_root, pkg_dir)
         return pkg_dir
     return None
 
 
-def resolve(project_root):
+def resolve(project_root, agent_root=None):
     """Find the csharpconsole_core directory. Returns Path or raises FileNotFoundError."""
-    pkg_dir = find_package_dir(project_root)
+    pkg_dir = find_package_dir(project_root, agent_root)
     if pkg_dir:
         return pkg_dir / CORE_RELATIVE
     raise FileNotFoundError(
@@ -62,8 +65,8 @@ def resolve(project_root):
     )
 
 
-def is_available(project_root):
-    return find_package_dir(project_root) is not None
+def is_available(project_root, agent_root=None):
+    return find_package_dir(project_root, agent_root) is not None
 
 
 def _ensure_path(core_path):
@@ -77,21 +80,15 @@ def _ensure_path(core_path):
 
 
 def _make_post_with_retry(transport_http, state, default_timeout):
-    """Create a POST function that retries once on connection errors."""
-    # csharpconsole_core uses `requests`; import conditionally for the
-    # exception type so we stay compatible if the core ever switches to stdlib.
-    try:
-        import requests
-        _retry_errors = (requests.ConnectionError, ConnectionRefusedError, OSError)
-    except ImportError:
-        _retry_errors = (ConnectionRefusedError, OSError)
+    """Create a POST function that retries once when the server is unreachable."""
 
     def _post(endpoint, payload, timeout=None):
         t = timeout if timeout is not None else default_timeout
         url_base = state.current_server_base_url()
         try:
             return transport_http.post_json(url_base, endpoint, payload, t)
-        except _retry_errors:
+        except ConnectionRefusedError:
+            # Request never reached the server — safe to retry.
             time.sleep(_RETRY_DELAY_S)
             return transport_http.post_json(url_base, endpoint, payload, t)
 
@@ -112,8 +109,9 @@ def _coerce_args_json(cmd):
 class ConsoleSession:
     """Pre-wired facade over csharpconsole_core. One-liner per command."""
 
-    def __init__(self, project_root, ip="127.0.0.1", port=14500, mode="editor", timeout=30):
-        core_path = resolve(project_root)
+    def __init__(self, project_root, ip="127.0.0.1", port=14500, mode="editor", timeout=30,
+                 agent_root=None, pkg_dir=None):
+        core_path = (pkg_dir / CORE_RELATIVE) if pkg_dir else resolve(project_root, agent_root)
         _ensure_path(core_path)
 
         from csharpconsole_core import (
@@ -280,5 +278,13 @@ class ConsoleSession:
                 (time.time() - start) * 1000,
             )
 
+    def _print_text(self, result):
+        text = result.get("data", {}).get("text") or result.get("summary", "")
+        text = text.replace("\\n", "\n").replace("\\t", "\t")
+        if result.get("ok"):
+            print(text) if text else None
+        else:
+            print(text, file=__import__("sys").stderr)
+
     def emit(self, result):
-        self._output.emit_result(result, as_json=False)
+        self._output.emit_result(result, as_json=False, print_text=self._print_text)
