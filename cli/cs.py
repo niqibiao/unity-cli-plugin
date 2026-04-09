@@ -81,6 +81,9 @@ def detect_port(project_root):
 # ── Output helpers ─────────────────────────────────────────────────────
 
 _SLIM_DROP = {"stage", "type", "exitCode", "sessionId", "runId", "mode", "durationMs"}
+_HEALTH_DROP = {"ok", "initialized", "isEditor", "port", "refreshing", "editorState",
+                "packageVersion", "protocolVersion", "unityVersion", "operation",
+                "accepted", "sessionsCleared", "exitPlayModeRequested", "message"}
 
 
 def _slim_result(result):
@@ -94,13 +97,14 @@ def _slim_result(result):
         # command echo removal
         elif "command" in data and len(data) == 1:
             out.pop("data", None)
-        # health: drop verbose operation details
-        if isinstance(out.get("data"), dict):
-            out["data"].pop("operation", None)
-    # drop empty summary/data
+        # health/refresh: strip diagnostic fields
+        elif "initialized" in data or "accepted" in data:
+            trimmed = {k: v for k, v in data.items() if k not in _HEALTH_DROP}
+            out["data"] = trimmed if trimmed else None
+    # drop empty/redundant summary/data
     if out.get("summary") in ("", "OK"):
         out.pop("summary", None)
-    if out.get("data") == {}:
+    if not out.get("data"):
         out.pop("data", None)
     return out
 
