@@ -13,7 +13,7 @@ _CLI_DIR = os.path.dirname(os.path.abspath(__file__))
 if os.path.dirname(_CLI_DIR) not in sys.path:
     sys.path.insert(0, os.path.dirname(_CLI_DIR))
 
-from cli import PACKAGE_NAME, DEFAULT_SOURCE, save_pkg_path, save_project_root, load_project_root
+from cli import PACKAGE_NAME, DEFAULT_SOURCE, save_pkg_path
 
 
 def _is_unity_root(d):
@@ -31,35 +31,35 @@ def _scan_children(p):
 def find_project_root(hint=None):
     """Locate a Unity project root.
 
-    If *hint* is provided (``--project``), use it directly and cache.
-    Otherwise: check cache, then current directory, then immediate children.
+    If *hint* is provided (``--project``), use it directly, scan children,
+    or walk up to find the root.  Otherwise: current directory, then children.
     """
-    cwd = Path.cwd().resolve()
-
     if hint:
         p = Path(hint).resolve()
         if _is_unity_root(p):
-            save_project_root(cwd, p)
             return p
-        if p.is_dir():
-            child = _scan_children(p)
-            if child:
-                save_project_root(cwd, child)
-                return child
+        child = _scan_children(p) if p.is_dir() else None
+        if child:
+            return child
+        # Walk up from hint to find project root
+        for parent in p.parents:
+            if _is_unity_root(parent):
+                return parent
         return None
 
-    cached = load_project_root(cwd, validator=_is_unity_root)
-    if cached:
-        return cached
+    cwd = Path.cwd().resolve()
 
     if _is_unity_root(cwd):
-        save_project_root(cwd, cwd)
         return cwd
 
     child = _scan_children(cwd)
     if child:
-        save_project_root(cwd, child)
         return child
+
+    # Walk up from cwd
+    for parent in cwd.parents:
+        if _is_unity_root(parent):
+            return parent
 
     return None
 
@@ -124,7 +124,7 @@ def _clone_with_progress(source, dest):
     return 0
 
 
-def cmd_setup(root, args):
+def cmd_setup(root, args, agent_root=None):
     if root is None:
         print("Error: no Unity project found. Use --project to specify the path.", file=sys.stderr)
         return 1
@@ -163,12 +163,17 @@ def cmd_setup(root, args):
                 local_dir = root / "Packages" / PACKAGE_NAME
         rel_path = Path(os.path.relpath(local_dir, manifest.parent)).as_posix()
         dep_value_local = f"file:{rel_path}"
-        if local_dir.exists():
+        pkg_json = local_dir / "package.json"
+        if pkg_json.is_file():
             if PACKAGE_NAME in deps and deps[PACKAGE_NAME] == dep_value_local:
                 print(f"Already installed (local): {local_dir}")
                 return 0
             # Directory exists but manifest points elsewhere (e.g. git) — update below
         else:
+            # Remove incomplete clone leftovers before retrying
+            if local_dir.exists():
+                import shutil
+                shutil.rmtree(local_dir)
             local_dir.parent.mkdir(parents=True, exist_ok=True)
             rc = _clone_with_progress(source, local_dir)
             if rc != 0:
@@ -186,19 +191,19 @@ def cmd_setup(root, args):
     print(f"Added {PACKAGE_NAME} to {manifest}")
     # Cache the resolved package path for subsequent CLI commands
     if method == "local":
-        save_pkg_path(root, local_dir)
+        save_pkg_path(agent_root, local_dir)
     print("Open Unity Editor to resolve the package, then run: cs status")
     return 0
 
 
-def cmd_status(root, args):
+def cmd_status(root, args, agent_root=None):
     if root is None:
         print("unity_project: NOT FOUND")
         return 1
     print(f"unity_project: {root}")
 
     from cli.core_bridge import find_package_dir
-    pkg_dir = find_package_dir(root)
+    pkg_dir = find_package_dir(root, agent_root)
     if pkg_dir:
         print(f"package: {pkg_dir}")
     else:
@@ -208,7 +213,7 @@ def cmd_status(root, args):
 
     from cli.core_bridge import ConsoleSession
     try:
-        s = ConsoleSession(root, args.ip, args.port, args.mode, args.timeout)
+        s = ConsoleSession(root, args.ip, args.port, args.mode, args.timeout, pkg_dir=pkg_dir)
         r = s.health()
         if r.get("ok"):
             data = r.get("data", {})
@@ -280,6 +285,7 @@ def main():
                           help="Stop executing on first error")
 
     args = p.parse_args()
+    agent_root = args.project or str(Path.cwd())
     root = find_project_root(args.project)
 
     # Auto-detect port if not specified.
@@ -301,9 +307,9 @@ def main():
 
     # Pre-setup commands
     if args.cmd == "setup":
-        sys.exit(cmd_setup(root, args))
+        sys.exit(cmd_setup(root, args, agent_root))
     if args.cmd == "status":
-        sys.exit(cmd_status(root, args))
+        sys.exit(cmd_status(root, args, agent_root))
     if not args.cmd:
         p.print_help()
         sys.exit(1)
@@ -313,12 +319,13 @@ def main():
         print("Error: no Unity project found. Use --project to specify the path.", file=sys.stderr)
         sys.exit(1)
 
-    from cli.core_bridge import ConsoleSession
-    try:
-        s = ConsoleSession(root, args.ip, args.port, args.mode, args.timeout)
-    except FileNotFoundError as e:
-        print(f"Error: {e}", file=sys.stderr)
+    from cli.core_bridge import find_package_dir, ConsoleSession
+    pkg_dir = find_package_dir(root, agent_root)
+    if pkg_dir is None:
+        print("Error: C# Console package not found. Run 'cs setup' (or /unity-cli-setup) first.", file=sys.stderr)
         sys.exit(1)
+
+    s = ConsoleSession(root, args.ip, args.port, args.mode, args.timeout, pkg_dir=pkg_dir)
 
     def _refresh():
         r = s.refresh(exit_playmode=getattr(args, "exit_playmode", False))
