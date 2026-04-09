@@ -78,6 +78,33 @@ def detect_port(project_root):
     return None
 
 
+# ── Output helpers ─────────────────────────────────────────────────────
+
+_SLIM_DROP = {"stage", "type", "exitCode", "sessionId", "runId", "mode", "durationMs"}
+
+
+def _slim_result(result):
+    """Strip diagnostic fields from a result dict for compact agent output."""
+    out = {k: v for k, v in result.items() if k not in _SLIM_DROP}
+    data = out.get("data")
+    if isinstance(data, dict):
+        # command: flatten resultJson, drop request echo
+        if "resultJson" in data:
+            out["data"] = data["resultJson"]
+        # command echo removal
+        elif "command" in data and len(data) == 1:
+            out.pop("data", None)
+        # health: drop verbose operation details
+        if isinstance(out.get("data"), dict):
+            out["data"].pop("operation", None)
+    # drop empty summary/data
+    if out.get("summary") in ("", "OK"):
+        out.pop("summary", None)
+    if out.get("data") == {}:
+        out.pop("data", None)
+    return out
+
+
 # ── Pre-setup commands (pure stdlib, no core needed) ────────────────────
 
 _PROGRESS_RE = re.compile(r"^(.+?):\s+(\d+)%\s+\((\d+)/(\d+)\)")
@@ -245,7 +272,10 @@ def main():
     shared.add_argument("--port", type=int, default=None)
     shared.add_argument("--mode", choices=["editor", "runtime"], default="editor")
     shared.add_argument("--timeout", type=int, default=30, help="HTTP timeout in seconds (default: 30)")
-    shared.add_argument("--json", dest="as_json", action="store_true", help="JSON output")
+    shared.add_argument("--json", dest="as_json", action="store_true",
+                        help="JSON output (compact by default, use --verbose for full)")
+    shared.add_argument("--verbose", action="store_true",
+                        help="Full JSON output with all diagnostic fields")
 
     p = argparse.ArgumentParser(prog="cs", description="Unity C# Console CLI", parents=[shared])
     sub = p.add_subparsers(dest="cmd")
@@ -349,6 +379,8 @@ def main():
     result = dispatch[args.cmd]()
 
     if args.as_json:
+        if not args.verbose:
+            result = _slim_result(result)
         json.dump(result, sys.stdout, ensure_ascii=False, indent=2)
         print()
     else:
