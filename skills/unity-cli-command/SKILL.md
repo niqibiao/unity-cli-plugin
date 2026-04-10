@@ -1,15 +1,10 @@
 ---
 name: unity-cli-command
 description: >
-  Interact with the Unity Editor through structured framework commands. Use when
-  the user wants to: create/find/modify/destroy GameObjects, add/remove/inspect
-  components, move/rotate/scale transforms, manage scenes (open/save/list),
-  take screenshots, control play mode, manage materials and prefabs, profile
-  performance, query the scene hierarchy, trigger asset refresh/recompile after
-  writing C# files, or perform any structured Unity Editor operation.
-  This skill should be preferred over raw C# code execution.
-  Also triggers on: "list commands", "what commands are available", "session",
-  "selection", "project command", "refresh", "recompile".
+  Structured Unity Editor commands. Covers: GameObject (create/find/modify/destroy/duplicate),
+  component (add/remove/get/modify), transform (get/set), scene management, materials,
+  prefabs, screenshots, play mode, profiling, hierarchy query, asset refresh/recompile,
+  selection, session, command listing. Preferred over raw C# execution.
 ---
 
 # Unity CLI Command
@@ -65,10 +60,10 @@ Many commands accept both `path` (hierarchy path like `"Canvas/Button"`) and `in
 
 | action | summary | args |
 |--------|---------|------|
-| add | Add a component to a GameObject | gameObjectPath: string, gameObjectInstanceId: int, typeName: string |
-| remove | Remove a component from a GameObject | gameObjectPath: string, gameObjectInstanceId: int, typeName: string, index: int |
-| get | Get serialized field data of a component | gameObjectPath: string, gameObjectInstanceId: int, typeName: string, index: int |
-| modify | Modify serialized fields of a component | gameObjectPath: string, gameObjectInstanceId: int, typeName: string, index: int, fields: FieldPair[] |
+| add | Add a component to a GameObject | typeName: string, gameObjectPath: string, gameObjectInstanceId: int |
+| remove | Remove a component from a GameObject | typeName: string, gameObjectPath: string, gameObjectInstanceId: int, index: int |
+| get | Get serialized field data of a component | typeName: string, gameObjectPath: string, gameObjectInstanceId: int, index: int |
+| modify | Modify serialized fields of a component | fields: FieldPair[], typeName: string, gameObjectPath: string, gameObjectInstanceId: int, index: int |
 
 ### transform
 
@@ -83,13 +78,13 @@ Many commands accept both `path` (hierarchy path like `"Canvas/Button"`) and `in
 |--------|---------|------|
 | create | Create a new material asset | savePath: string, shaderName: string |
 | get | Get material properties | assetPath: string, gameObjectPath: string |
-| assign | Assign a material to a Renderer component | gameObjectPath: string, gameObjectInstanceId: int, materialPath: string, index: int |
+| assign | Assign a material to a Renderer component | materialPath: string, gameObjectPath: string, gameObjectInstanceId: int, index: int |
 
 ### prefab
 
 | action | summary | args |
 |--------|---------|------|
-| create | Create a prefab asset from a scene GameObject | gameObjectPath: string, gameObjectInstanceId: int, savePath: string |
+| create | Create a prefab asset from a scene GameObject | savePath: string, gameObjectPath: string, gameObjectInstanceId: int |
 | instantiate | Instantiate a prefab into the active scene | assetPath: string, parentPath: string, position: Vector3 |
 | unpack | Unpack a prefab instance | gameObjectPath: string, gameObjectInstanceId: int, full: bool |
 
@@ -144,11 +139,8 @@ Many commands accept both `path` (hierarchy path like `"Canvas/Button"`) and `in
 
 ## Custom Commands
 
-User-defined custom commands registered via C# are cached separately.
-
-1. Check if `${CLAUDE_PLUGIN_ROOT}/skills/unity-cli-command/dynamic-commands.md` exists.
-2. If it exists, Read it for additional user-registered commands.
-3. If the user's request doesn't match any known command (built-in or cached custom), run `cs list-commands --json` as a one-time fallback and suggest the user run `/unity-cli-refresh-commands` to cache the results.
+1. Check if `${CLAUDE_PLUGIN_ROOT}/skills/unity-cli-command/dynamic-commands.md` exists and Read it for additional commands.
+2. If no match found, run `cs list-commands --json` as fallback and suggest `/unity-cli-refresh-commands`.
 
 ## Runtime Mode
 

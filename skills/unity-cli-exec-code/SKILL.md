@@ -1,13 +1,10 @@
 ---
 name: unity-cli-exec-code
 description: >
-  Fallback for executing raw C# code in Unity when no framework command
-  (unity-cli-command skill) covers the task. Check unity-cli-command first.
-  Trigger words: "execute C#", "run code in Unity", "eval", or any explicit
-  C# snippet the user provides.
-  Also use for: custom editor scripting, AssetDatabase operations, complex
-  queries spanning multiple APIs, reflection, private member inspection,
-  LINQ scene queries, or any Unity API not covered by a framework command.
+  Fallback for raw C# execution in Unity when no framework command covers the task.
+  Check unity-cli-command first. For: custom scripting, AssetDatabase, multi-API queries,
+  reflection, private member access, LINQ scene queries, or uncovered Unity APIs.
+  Triggers on C# snippets or "execute C#"/"run code"/"eval" requests.
 ---
 
 # Unity CLI Exec Code (Fallback)
@@ -39,9 +36,7 @@ This is a Roslyn REPL, not a simple eval. Non-obvious capabilities:
 
 ```csharp
 DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
-```
-
-```csharp
+// inline chains work too:
 var cam = Camera.main; cam.fieldOfView
 ```
 
@@ -67,10 +62,7 @@ var go = GameObject.Find("Main Camera"); go.m_InstanceID
 
 ```csharp
 using System.Linq; GameObject.FindObjectsOfType<Rigidbody>().Select(r => $"{r.name}: mass={r.mass}").ToList()
-```
-
-```csharp
-// System.Linq persists from the previous submission
+// System.Linq persists — no need to re-import
 Resources.FindObjectsOfTypeAll<GameObject>().Where(g => !g.activeInHierarchy).Select(g => g.name).ToList()
 ```
 
@@ -83,12 +75,9 @@ using System.Linq; UnityEditor.AssetDatabase.FindAssets("t:Material").Select(g =
 ### Define reusable helpers (persists in session)
 
 ```csharp
-// Call 1: define
+// Call 1: define a function
 string Dump(Transform t, int d=0) { var s = new string(' ', d*2) + t.name; foreach(Transform c in t) s += "\n" + Dump(c, d+1); return s; }
-```
-
-```csharp
-// Call 2: use
+// Call 2: use it — function persists across submissions
 Dump(GameObject.Find("Canvas").transform)
 ```
 
