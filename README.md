@@ -283,40 +283,7 @@ python cli/cs.py list-commands --json --project . --timeout 10
 
 ### 🔧 Custom Commands
 
-Add `[CommandAction]` to any static method — auto-discovered at startup, no registration needed. Parameters are bound automatically from JSON args by name.
-
-```csharp
-using Zh1Zh1.CSharpConsole.Service.Commands.Routing;
-
-public static class MyCommands
-{
-    // Minimal form — return (bool, string) tuple
-    [CommandAction("custom", "greet", summary: "Say hello")]
-    private static (bool, string) Greet(string name = "World")
-    {
-        return (true, $"Hello, {name}!");
-    }
-}
-```
-
-For structured data, return `CommandResponse`:
-
-```csharp
-using Zh1Zh1.CSharpConsole.Service.Commands.Core;
-using Zh1Zh1.CSharpConsole.Service.Commands.Routing;
-
-public static class MyCommands
-{
-    [CommandAction("mygame", "spawn", editorOnly: true, runOnMainThread: true, summary: "Spawn prefab instances")]
-    private static CommandResponse Spawn(string prefabPath, int count = 1)
-    {
-        // ... instantiation logic ...
-        return CommandResponseFactory.Ok($"Spawned {count} instance(s)");
-    }
-}
-```
-
-Run `/unity-cli-refresh-commands` to make Claude aware of new commands.
+Custom commands are supported. See [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole) for how to define and register them.
 
 ### 🏗️ Architecture
 
