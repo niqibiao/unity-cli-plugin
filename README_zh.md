@@ -283,40 +283,7 @@ python cli/cs.py list-commands --json --project . --timeout 10
 
 ### 🔧 自定义命令
 
-给任意静态方法加上 `[CommandAction]` —— 启动时自动发现，无需注册。参数从 JSON args 中按名称自动绑定。
-
-```csharp
-using Zh1Zh1.CSharpConsole.Service.Commands.Routing;
-
-public static class MyCommands
-{
-    // 最简形式 — 返回 (bool, string) 元组
-    [CommandAction("custom", "greet", summary: "Say hello")]
-    private static (bool, string) Greet(string name = "World")
-    {
-        return (true, $"Hello, {name}!");
-    }
-}
-```
-
-需要返回结构化数据时，使用 `CommandResponse`：
-
-```csharp
-using Zh1Zh1.CSharpConsole.Service.Commands.Core;
-using Zh1Zh1.CSharpConsole.Service.Commands.Routing;
-
-public static class MyCommands
-{
-    [CommandAction("mygame", "spawn", editorOnly: true, runOnMainThread: true, summary: "Spawn prefab instances")]
-    private static CommandResponse Spawn(string prefabPath, int count = 1)
-    {
-        // ... 实例化逻辑 ...
-        return CommandResponseFactory.Ok($"Spawned {count} instance(s)");
-    }
-}
-```
-
-运行 `/unity-cli-refresh-commands` 让 Claude 感知新命令。
+支持自定义命令。定义和注册方式请参考 [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)。
 
 ### 🏗️ 架构
 
