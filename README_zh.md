@@ -48,7 +48,7 @@ Claude:  完成。10 个 Cube 已在半径 5 处创建，均已添加 Rigidbody 
 
 ### 🚀 快速开始 — Claude Code
 
-**前置条件：** [Claude Code](https://claude.ai/code)、Unity 2022.3+、Python 3+
+**前置条件：** [Claude Code](https://claude.ai/code)、Unity 2022.3+、Python 3.7+
 
 ```bash
 # 1. 添加市场源并安装插件
@@ -67,7 +67,7 @@ claude
 
 > **注意：** Codex CLI 尚未正式支持第三方插件分发。以下步骤依赖本地工作区 marketplace，后续版本可能会有变化。
 
-**前置条件：** [Codex CLI](https://github.com/openai/codex)、Unity 2022.3+、Python 3+
+**前置条件：** [Codex CLI](https://github.com/openai/codex)、Unity 2022.3+、Python 3.7+
 
 ```bash
 # 1. 在 Unity 工程根目录启动 Codex

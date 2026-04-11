@@ -48,7 +48,7 @@ Same approach as [Playwright CLI](https://github.com/microsoft/playwright-cli) �
 
 ### 🚀 Quick Start — Claude Code
 
-**Prerequisites:** [Claude Code](https://claude.ai/code), Unity 2022.3+, Python 3+
+**Prerequisites:** [Claude Code](https://claude.ai/code), Unity 2022.3+, Python 3.7+
 
 ```bash
 # 1. Add the marketplace & install the plugin
@@ -67,7 +67,7 @@ claude
 
 > **Note:** Codex CLI does not yet officially support third-party plugin distribution. The steps below rely on the local workspace marketplace, which may change in future releases.
 
-**Prerequisites:** [Codex CLI](https://github.com/openai/codex), Unity 2022.3+, Python 3+
+**Prerequisites:** [Codex CLI](https://github.com/openai/codex), Unity 2022.3+, Python 3.7+
 
 ```bash
 # 1. Start Codex in your Unity project
