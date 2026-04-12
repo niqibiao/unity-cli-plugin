@@ -263,6 +263,24 @@ def cmd_status(root, args, agent_root=None):
             print("service: UNREACHABLE")
     except Exception as e:
         print(f"service: ERROR ({e})")
+
+    # Version alignment hints
+    try:
+        from cli.version_check import check_versions, parse_semver
+        info = check_versions(pkg_dir, DEFAULT_SOURCE, timeout=5)
+        hints = []
+        if not info["aligned"]:
+            pv_s = parse_semver(info["plugin"])
+            kv_s = parse_semver(info["package"])
+            pl = f"{pv_s[0]}.{pv_s[1]}.x" if pv_s else info["plugin"]
+            kl = f"{kv_s[0]}.{kv_s[1]}.x" if kv_s else info["package"]
+            hints.append(f"\u26a0 plugin {pl} \u2260 package {kl}")
+        if info["updateAvailable"]:
+            hints.append(f"\u26a0 update available: {info['package']} \u2192 {info['remote']}")
+        if hints:
+            print(f"{' | '.join(hints)} \u2014 run `cs check-update` for details")
+    except Exception:
+        pass  # version check is best-effort, never block status
     return 0
 
 
