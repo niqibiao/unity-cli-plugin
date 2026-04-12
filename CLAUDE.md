@@ -85,6 +85,7 @@ Run `/unity-cli-sync-catalog` to compare the local catalog with the live command
 
 ## Development Notes
 
+- **Always ask before pushing** — never `git push` without explicit user confirmation
 - No build step, no tests, no external deps — just stdlib Python
 - Unity project detection: walks up from cwd looking for an `Assets/` directory
 - `find_project_root()` in `cs.py` handles project auto-detection; `--project` flag overrides
