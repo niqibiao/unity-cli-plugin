@@ -197,7 +197,23 @@ def cmd_setup(root, args, agent_root=None):
         pkg_json = local_dir / "package.json"
         if pkg_json.is_file():
             if PACKAGE_NAME in deps and deps[PACKAGE_NAME] == dep_value_local:
-                print(f"Already installed (local): {local_dir}")
+                if not getattr(args, "update", False):
+                    print(f"Already installed (local): {local_dir}")
+                    return 0
+                # --update: pull latest changes
+                print(f"Updating {local_dir} ...")
+                try:
+                    rc = subprocess.run(
+                        ["git", "-C", str(local_dir), "pull", "--ff-only"],
+                        capture_output=True, text=True,
+                    ).returncode
+                    if rc != 0:
+                        print("Error: git pull failed. Check network or resolve conflicts manually.", file=sys.stderr)
+                        return 1
+                    print(f"Updated (local): {local_dir}")
+                except FileNotFoundError:
+                    print("Error: git is not installed or not on PATH.", file=sys.stderr)
+                    return 1
                 return 0
             # Directory exists but manifest points elsewhere (e.g. git) — update below
         else:
@@ -213,8 +229,12 @@ def cmd_setup(root, args, agent_root=None):
         dep_value = dep_value_local
     else:
         if PACKAGE_NAME in deps:
-            print(f"Already installed: {PACKAGE_NAME}")
-            return 0
+            if not getattr(args, "update", False):
+                print(f"Already installed: {PACKAGE_NAME}")
+                return 0
+            # --update: remove and re-add to force Unity re-resolve
+            print(f"Forcing re-resolve of {PACKAGE_NAME} ...")
+            del deps[PACKAGE_NAME]
         dep_value = source
 
     deps[PACKAGE_NAME] = dep_value
@@ -350,6 +370,8 @@ def main():
     sp_setup.add_argument("--source", help="Git URL (default: GitHub repo)")
     sp_setup.add_argument("--method", choices=["local", "git"], default="git",
                           help="git = Unity resolves URL, local = clone to Packages/ (default: git)")
+    sp_setup.add_argument("--update", action="store_true",
+                          help="Update existing installation instead of skipping")
 
     sub.add_parser("status", parents=[shared], help="Package + connection status")
 
