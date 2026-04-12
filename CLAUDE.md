@@ -34,7 +34,7 @@ When a built-in framework command exists, prefer `cs command <ns> <action>` over
 | `cs refresh [--wait TIMEOUT] [--exit-playmode]` | post | Trigger asset refresh + script compilation |
 | `cs list-commands` | post | List available commands |
 | `cs complete <code> <cursor>` | post | Get completions |
-| `cs check-update` | pre | Version alignment + update check |
+| `cs check-update` | post | Version alignment + update check |
 
 ## Architecture
 
