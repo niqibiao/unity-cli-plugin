@@ -266,6 +266,50 @@ def cmd_status(root, args, agent_root=None):
     return 0
 
 
+def cmd_check_update(root, args, agent_root=None):
+    from cli.core_bridge import find_package_dir
+    pkg_dir = find_package_dir(root, agent_root) if root else None
+
+    if not pkg_dir:
+        print("package: NOT FOUND (run 'cs setup' first)")
+        return 1
+
+    source = getattr(args, "source", None) or DEFAULT_SOURCE
+    from cli.version_check import check_versions
+    info = check_versions(pkg_dir, source, timeout=5)
+
+    if args.as_json:
+        json.dump({"ok": True, **info}, sys.stdout, ensure_ascii=False, indent=2)
+        print()
+        return 0
+
+    print(f"plugin:    {info['plugin']}")
+    print(f"package:   {info['package'] or 'unknown'}")
+    print(f"remote:    {info['remote'] or 'unavailable (network error)'}")
+
+    if info["aligned"]:
+        pv = info["package"] or "?"
+        from cli.version_check import parse_semver
+        sv = parse_semver(pv)
+        label = f"{sv[0]}.{sv[1]}.x" if sv else pv
+        print(f"alignment: \u2713 aligned ({label})")
+    else:
+        from cli.version_check import parse_semver
+        pv_s = parse_semver(info["plugin"])
+        kv_s = parse_semver(info["package"])
+        pl = f"{pv_s[0]}.{pv_s[1]}.x" if pv_s else info["plugin"]
+        kl = f"{kv_s[0]}.{kv_s[1]}.x" if kv_s else info["package"]
+        print(f"alignment: \u26a0 plugin {pl} \u2260 package {kl}")
+
+    if info["updateAvailable"]:
+        print(f"update:    \u26a0 package {info['package']} \u2192 {info['remote']} available")
+        print("hint:      run `cs setup --update` to update the package")
+    else:
+        print(f"update:    \u2713 up to date")
+
+    return 0
+
+
 # ── Main ────────────────────────────────────────────────────────────────
 
 def main():
@@ -318,6 +362,8 @@ def main():
     sp_batch.add_argument("--stop-on-error", action="store_true",
                           help="Stop executing on first error")
 
+    sub.add_parser("check-update", parents=[shared], help="Check version alignment and updates")
+
     args = p.parse_args()
     agent_root = args.project or str(Path.cwd())
     root = find_project_root(args.project)
@@ -344,6 +390,8 @@ def main():
         sys.exit(cmd_setup(root, args, agent_root))
     if args.cmd == "status":
         sys.exit(cmd_status(root, args, agent_root))
+    if args.cmd == "check-update":
+        sys.exit(cmd_check_update(root, args, agent_root))
     if not args.cmd:
         p.print_help()
         sys.exit(1)
