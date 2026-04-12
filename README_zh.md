@@ -149,7 +149,7 @@ python cli/cs.py list-commands --json --project . --timeout 10
 
 ### 📦 命令
 
-12 个命名空间、46 个内置命令。所有命令支持 `--json` 输出。
+13 个命名空间、50 个内置命令。所有命令支持 `--json` 输出。
 
 #### gameobject
 
@@ -244,8 +244,19 @@ python cli/cs.py list-commands --json --project . --timeout 10
 | `playmode.exit`   | 退出 Play Mode          |
 | `menu.open`       | 按路径执行菜单项              |
 | `window.open`     | 按类型名打开编辑器窗口           |
-| `console.get`     | 获取编辑器控制台日志            |
 | `console.clear`   | 清空编辑器控制台              |
+| `console.mark`    | 向编辑器日志写入可搜索标记         |
+
+
+#### asset
+
+
+| Action          | 说明                   |
+| --------------- | -------------------- |
+| `move`          | 移动或重命名资产             |
+| `copy`          | 将资产复制到新路径            |
+| `delete`        | 删除一个或多个资产            |
+| `create_folder` | 在 Asset Database 创建文件夹 |
 
 
 #### project

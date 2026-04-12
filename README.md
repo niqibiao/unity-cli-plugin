@@ -149,7 +149,7 @@ python cli/cs.py list-commands --json --project . --timeout 10
 
 ### 📦 Commands
 
-46 built-in commands across 12 namespaces. All commands support `--json` output.
+50 built-in commands across 13 namespaces. All commands support `--json` output.
 
 #### gameobject
 
@@ -244,8 +244,19 @@ python cli/cs.py list-commands --json --project . --timeout 10
 | `playmode.exit`   | Exit play mode                      |
 | `menu.open`       | Execute a menu item by path         |
 | `window.open`     | Open an editor window by type name  |
-| `console.get`     | Get editor console log entries      |
 | `console.clear`   | Clear the editor console            |
+| `console.mark`    | Write a searchable marker to the editor log |
+
+
+#### asset
+
+
+| Action          | Description                           |
+| --------------- | ------------------------------------- |
+| `move`          | Move or rename an asset               |
+| `copy`          | Copy an asset to a new path           |
+| `delete`        | Delete one or more assets             |
+| `create_folder` | Create a folder in the Asset Database |
 
 
 #### project
