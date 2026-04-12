@@ -48,9 +48,14 @@ def get_package_version(pkg_dir):
         return None
 
 
+_GITHUB_RE = re.compile(
+    r"(?:https?://github\.com/|git@github\.com:)([^/#]+)/([^/#]+?)(?:\.git)?(?:#.*)?$"
+)
+
+
 def _github_owner_repo(source):
     """Extract 'owner/repo' from a GitHub URL. Returns str or None."""
-    m = re.search(r"github\.com[/:]([^/]+)/([^/.]+?)(?:\.git)?$", str(source))
+    m = _GITHUB_RE.search(str(source))
     if m:
         return f"{m.group(1)}/{m.group(2)}"
     return None
