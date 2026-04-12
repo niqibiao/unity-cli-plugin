@@ -4,7 +4,8 @@ description: >
   Structured Unity Editor commands. Covers: GameObject (create/find/modify/destroy/duplicate),
   component (add/remove/get/modify), transform (get/set), scene management, materials,
   prefabs, screenshots, play mode, profiling, hierarchy query, asset refresh/recompile,
-  selection, session, command listing. Preferred over raw C# execution.
+  asset management (move/copy/delete/create_folder), selection, session, command listing.
+  Preferred over raw C# execution.
 ---
 
 # Unity CLI Command
@@ -41,8 +42,8 @@ Many commands accept both `path` (hierarchy path like `"Canvas/Button"`) and `in
 | playmode.exit | Exit play mode | — |
 | menu.open | Open a menu item by path | menuPath: string |
 | window.open | Open an editor window by type name | typeName: string, utility: bool |
-| console.get | Get editor console log entries | — |
 | console.clear | Clear the editor console | — |
+| console.mark | Write a searchable marker into the editor log and return the log file path | label: string |
 
 ### gameobject
 
@@ -100,6 +101,15 @@ Many commands accept both `path` (hierarchy path like `"Canvas/Button"`) and `in
 | asset.list | List assets by type filter | filter: string, folders: string[] |
 | asset.import | Import an asset by path | assetPath: string, forceSynchronousImport: bool |
 | asset.reimport | Reimport an asset by path | assetPath: string, forceSynchronousImport: bool |
+
+### asset
+
+| action | summary | args |
+|--------|---------|------|
+| move | Move or rename an asset | sourcePath: string, destinationPath: string |
+| copy | Copy an asset to a new path | sourcePath: string, destinationPath: string |
+| delete | Delete one or more assets | assetPath: string, assetPaths: string[] |
+| create_folder | Create a folder in the Asset Database | folderPath: string |
 
 ### scene
 
