@@ -25,7 +25,7 @@ When a built-in framework command exists, prefer `cs command <ns> <action>` over
 
 | Command | Phase | Description |
 |---------|-------|-------------|
-| `cs setup [--source URL]` | pre | Add package to Packages/manifest.json |
+| `cs setup [--source URL] [--update]` | pre | Add/update package in Packages/manifest.json |
 | `cs status` | pre | Package + connection status + version info |
 | `cs exec <code>` | post | Execute C# code |
 | `cs command <ns> <action> [args]` | post | Run framework command |
@@ -34,6 +34,7 @@ When a built-in framework command exists, prefer `cs command <ns> <action>` over
 | `cs refresh [--wait TIMEOUT] [--exit-playmode]` | post | Trigger asset refresh + script compilation |
 | `cs list-commands` | post | List available commands |
 | `cs complete <code> <cursor>` | post | Get completions |
+| `cs check-update` | post | Version alignment + update check |
 
 ## Architecture
 

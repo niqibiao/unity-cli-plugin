@@ -197,7 +197,26 @@ def cmd_setup(root, args, agent_root=None):
         pkg_json = local_dir / "package.json"
         if pkg_json.is_file():
             if PACKAGE_NAME in deps and deps[PACKAGE_NAME] == dep_value_local:
-                print(f"Already installed (local): {local_dir}")
+                if not getattr(args, "update", False):
+                    print(f"Already installed (local): {local_dir}")
+                    return 0
+                # --update: pull latest changes
+                print(f"Updating {local_dir} ...")
+                try:
+                    result = subprocess.run(
+                        ["git", "-C", str(local_dir), "pull", "--ff-only"],
+                        capture_output=True, text=True,
+                    )
+                    if result.returncode != 0:
+                        if result.stderr:
+                            print(result.stderr.strip(), file=sys.stderr)
+                        print("Error: git pull failed. The local clone may have diverged; "
+                              "delete it and re-run setup.", file=sys.stderr)
+                        return 1
+                    print(f"Updated (local): {local_dir}")
+                except FileNotFoundError:
+                    print("Error: git is not installed or not on PATH.", file=sys.stderr)
+                    return 1
                 return 0
             # Directory exists but manifest points elsewhere (e.g. git) — update below
         else:
@@ -213,8 +232,12 @@ def cmd_setup(root, args, agent_root=None):
         dep_value = dep_value_local
     else:
         if PACKAGE_NAME in deps:
-            print(f"Already installed: {PACKAGE_NAME}")
-            return 0
+            if not getattr(args, "update", False):
+                print(f"Already installed: {PACKAGE_NAME}")
+                return 0
+            # --update: remove and re-add to force Unity re-resolve
+            print(f"Forcing re-resolve of {PACKAGE_NAME} ...")
+            del deps[PACKAGE_NAME]
         dep_value = source
 
     deps[PACKAGE_NAME] = dep_value
@@ -263,6 +286,62 @@ def cmd_status(root, args, agent_root=None):
             print("service: UNREACHABLE")
     except Exception as e:
         print(f"service: ERROR ({e})")
+
+    # Version alignment hint (local only — no network, no latency)
+    try:
+        from cli.version_check import get_plugin_version, get_package_version, parse_semver, is_aligned
+        plugin_ver = get_plugin_version()
+        package_ver = get_package_version(pkg_dir)
+        if package_ver and not is_aligned(plugin_ver, package_ver):
+            pv_s = parse_semver(plugin_ver)
+            kv_s = parse_semver(package_ver)
+            pl = f"{pv_s[0]}.{pv_s[1]}.x" if pv_s else plugin_ver
+            kl = f"{kv_s[0]}.{kv_s[1]}.x" if kv_s else package_ver
+            print(f"\u26a0 plugin {pl} \u2260 package {kl} \u2014 run `cs check-update` for details")
+    except Exception:
+        pass  # version check is best-effort, never block status
+    return 0
+
+
+def cmd_check_update(root, args, agent_root=None):
+    from cli.core_bridge import find_package_dir
+    pkg_dir = find_package_dir(root, agent_root) if root else None
+
+    if not pkg_dir:
+        print("package: NOT FOUND (run 'cs setup' first)")
+        return 1
+
+    source = getattr(args, "source", None) or DEFAULT_SOURCE
+    from cli.version_check import check_versions, parse_semver
+    info = check_versions(pkg_dir, source, timeout=5)
+
+    if args.as_json:
+        json.dump({"ok": True, "exitCode": 0, **info}, sys.stdout, ensure_ascii=False, indent=2)
+        print()
+        return 0
+
+    print(f"plugin:    {info['plugin']}")
+    print(f"package:   {info['package'] or 'unknown'}")
+    print(f"remote:    {info['remote'] or 'unavailable (network error)'}")
+
+    if info["aligned"]:
+        pv = info["package"] or "?"
+        sv = parse_semver(pv)
+        label = f"{sv[0]}.{sv[1]}.x" if sv else pv
+        print(f"alignment: \u2713 aligned ({label})")
+    else:
+        pv_s = parse_semver(info["plugin"])
+        kv_s = parse_semver(info["package"])
+        pl = f"{pv_s[0]}.{pv_s[1]}.x" if pv_s else info["plugin"]
+        kl = f"{kv_s[0]}.{kv_s[1]}.x" if kv_s else info["package"]
+        print(f"alignment: \u26a0 plugin {pl} \u2260 package {kl}")
+
+    if info["updateAvailable"]:
+        print(f"update:    \u26a0 package {info['package']} \u2192 {info['remote']} available")
+        print("hint:      run `cs setup --update` to update the package")
+    else:
+        print(f"update:    \u2713 up to date")
+
     return 0
 
 
@@ -288,6 +367,8 @@ def main():
     sp_setup.add_argument("--source", help="Git URL (default: GitHub repo)")
     sp_setup.add_argument("--method", choices=["local", "git"], default="git",
                           help="git = Unity resolves URL, local = clone to Packages/ (default: git)")
+    sp_setup.add_argument("--update", action="store_true",
+                          help="Update existing installation instead of skipping")
 
     sub.add_parser("status", parents=[shared], help="Package + connection status")
 
@@ -318,6 +399,8 @@ def main():
     sp_batch.add_argument("--stop-on-error", action="store_true",
                           help="Stop executing on first error")
 
+    sub.add_parser("check-update", parents=[shared], help="Check version alignment and updates")
+
     args = p.parse_args()
     agent_root = args.project or str(Path.cwd())
     root = find_project_root(args.project)
@@ -344,6 +427,8 @@ def main():
         sys.exit(cmd_setup(root, args, agent_root))
     if args.cmd == "status":
         sys.exit(cmd_status(root, args, agent_root))
+    if args.cmd == "check-update":
+        sys.exit(cmd_check_update(root, args, agent_root))
     if not args.cmd:
         p.print_help()
         sys.exit(1)
