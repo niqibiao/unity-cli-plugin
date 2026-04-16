@@ -556,15 +556,32 @@ def cmd_catalog_sync(root, args, agent_root):
             print(f"Error: list-commands failed: {msg}", file=sys.stderr)
         return 1
 
-    # Parse commands from response
+    # Parse commands from response. Fail closed on malformed payloads —
+    # never overwrite the existing catalog with empty data on a parse error.
     data = r.get("data", {})
     rj = data.get("resultJson", data)
     if isinstance(rj, str):
         try:
             rj = json.loads(rj)
-        except (ValueError, TypeError):
-            rj = {}
-    commands = rj.get("commands", [])
+        except (ValueError, TypeError) as e:
+            msg = f"list-commands returned malformed resultJson: {e}"
+            if args.as_json:
+                json.dump({"ok": False, "exitCode": 1, "summary": msg},
+                          sys.stdout, ensure_ascii=False, indent=2)
+                print()
+            else:
+                print(f"Error: {msg}. Existing catalog preserved.", file=sys.stderr)
+            return 1
+    if not isinstance(rj, dict) or not isinstance(rj.get("commands"), list):
+        msg = "list-commands response missing 'commands' list"
+        if args.as_json:
+            json.dump({"ok": False, "exitCode": 1, "summary": msg},
+                      sys.stdout, ensure_ascii=False, indent=2)
+            print()
+        else:
+            print(f"Error: {msg}. Existing catalog preserved.", file=sys.stderr)
+        return 1
+    commands = rj["commands"]
 
     # Filter to custom commands only
     custom = [c for c in commands if c.get("commandType") == "custom"]
