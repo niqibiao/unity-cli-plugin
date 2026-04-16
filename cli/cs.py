@@ -196,11 +196,8 @@ def cmd_setup(root, args, agent_root=None):
         pkg_json = local_dir / "package.json"
         if pkg_json.is_file():
             if PACKAGE_NAME in deps and deps[PACKAGE_NAME] == dep_value_local:
-                if not getattr(args, "update", False):
-                    print(f"Already installed (local): {local_dir}")
-                    return 0
-                # --update: pull latest changes
-                print(f"Updating {local_dir} ...")
+                # Always check git for updates (local clones are cheap to pull)
+                print(f"Checking for updates: {local_dir}")
                 try:
                     result = subprocess.run(
                         ["git", "-C", str(local_dir), "pull", "--ff-only"],
@@ -212,7 +209,11 @@ def cmd_setup(root, args, agent_root=None):
                         print("Error: git pull failed. The local clone may have diverged; "
                               "delete it and re-run setup.", file=sys.stderr)
                         return 1
-                    print(f"Updated (local): {local_dir}")
+                    stdout = result.stdout.strip()
+                    if "Already up to date" in stdout or "Already up-to-date" in stdout:
+                        print(f"Already up to date (local): {local_dir}")
+                    else:
+                        print(f"Updated (local): {local_dir}")
                 except FileNotFoundError:
                     print("Error: git is not installed or not on PATH.", file=sys.stderr)
                     return 1
