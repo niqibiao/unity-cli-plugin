@@ -59,9 +59,9 @@ Sources: `EditorApplication.isCompiling` and `CompilationPipeline`.
 
 These let agents decide whether to wait before executing commands.
 
-### U4. Backward compatibility
+### U4. Version requirement
 
-All additions are new fields with defaults. Old CLI versions that don't read them are unaffected. No protocol version bump needed.
+Both repos release together. CLI plugin 1.4.0 requires Unity package >= 1.4.0. No fallback for older package versions.
 
 ---
 
@@ -75,8 +75,7 @@ cs list-commands --type custom --json   # only custom commands
 cs list-commands --type builtin --json  # only builtin commands
 ```
 
-If the Unity response includes `commandType` → use it directly.
-If not (older package) → fall back to namespace-list inference.
+Uses `commandType` field from Unity response directly. No namespace-list inference.
 
 ### C2. Persistent catalog
 
