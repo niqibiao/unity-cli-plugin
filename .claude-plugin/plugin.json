@@ -1,6 +1,6 @@
 {
   "name": "unity-cli-plugin",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "description": "CLI and Claude Code integration for Unity C# Console",
   "author": { "name": "nqb" }
 }

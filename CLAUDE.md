@@ -35,6 +35,8 @@ When a built-in framework command exists, prefer `cs command <ns> <action>` over
 | `cs list-commands` | post | List available commands |
 | `cs complete <code> <cursor>` | post | Get completions |
 | `cs check-update` | post | Version alignment + update check |
+| `cs catalog sync` | post | Sync custom command catalog from live editor |
+| `cs catalog list` | post | List cached custom commands (offline) |
 
 ## Architecture
 
