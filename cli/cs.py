@@ -370,6 +370,34 @@ def cmd_check_update(root, args, agent_root=None):
     return 0
 
 
+def _filter_commands_by_type(result, type_filter):
+    """Filter list-commands result by commandType field."""
+    if type_filter == "all":
+        return result
+    data = result.get("data", {})
+    rj = data.get("resultJson", data)
+    if isinstance(rj, str):
+        try:
+            rj = json.loads(rj)
+        except (ValueError, TypeError):
+            return result
+    commands = rj.get("commands", [])
+    filtered = [c for c in commands if c.get("commandType", "builtin") == type_filter]
+    rj = dict(rj)
+    rj["commands"] = filtered
+    if isinstance(data.get("resultJson"), str):
+        data = dict(data)
+        data["resultJson"] = json.dumps(rj)
+        result = dict(result)
+        result["data"] = data
+    else:
+        data = dict(data)
+        data["commands"] = filtered
+        result = dict(result)
+        result["data"] = data
+    return result
+
+
 # ── Main ────────────────────────────────────────────────────────────────
 
 def main():
@@ -415,7 +443,9 @@ def main():
     sp_refresh.add_argument("--files", nargs="+", default=None, metavar="PATH",
                             help="Explicit asset paths to import (e.g. Assets/Scripts/Foo.cs)")
 
-    sub.add_parser("list-commands", parents=[shared], help="List available commands")
+    sp_lc = sub.add_parser("list-commands", parents=[shared], help="List available commands")
+    sp_lc.add_argument("--type", choices=["builtin", "custom", "all"], default="all",
+                        dest="cmd_type", help="Filter by command type (default: all)")
 
     sp_cmp = sub.add_parser("complete", parents=[shared], help="Get completions")
     sp_cmp.add_argument("code")
@@ -492,12 +522,16 @@ def main():
                 print("Warning: refresh returned ok=false; --wait skipped", file=sys.stderr)
         return r
 
+    def _list_commands_filtered(session, a):
+        r = session.list_commands()
+        return _filter_commands_by_type(r, a.cmd_type)
+
     dispatch = {
         "exec":     lambda: s.exec(args.code),
         "command":  lambda: s.command(args.namespace, args.action, args.args),
         "health":   lambda: s.health(),
         "refresh":  _refresh,
-        "list-commands": lambda: s.list_commands(),
+        "list-commands": lambda: _list_commands_filtered(s, args),
         "complete": lambda: s.complete(args.code, args.cursor),
         "batch":    lambda: s.batch(args.commands, args.stop_on_error),
     }
