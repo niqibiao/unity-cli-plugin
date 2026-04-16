@@ -274,7 +274,141 @@ def cmd_setup(root, args, agent_root=None):
     return 0
 
 
+def _cmd_status_json(root, args, agent_root=None):
+    """JSON branch for cmd_status — emits a structured result envelope."""
+    result = {"ok": False, "exitCode": 1, "summary": "", "data": {}}
+    data = result["data"]
+
+    # ── project ──────────────────────────────────────────────────────────
+    if root is not None:
+        data["project"] = {"path": str(root), "detected": True}
+    else:
+        data["project"] = {"path": None, "detected": False}
+
+    # ── package ──────────────────────────────────────────────────────────
+    pkg_dir = None
+    try:
+        from cli.core_bridge import find_package_dir
+        pkg_dir = find_package_dir(root, agent_root) if root else None
+        if pkg_dir:
+            # Determine location type (manifest file: vs package cache)
+            loc = "packageCache"
+            manifest = root / "Packages" / "manifest.json"
+            try:
+                mdata = json.loads(manifest.read_text("utf-8"))
+                entry = mdata.get("dependencies", {}).get(PACKAGE_NAME, "")
+                if entry.startswith("file:"):
+                    loc = "local"
+                elif entry:
+                    loc = "manifest"
+            except Exception:
+                pass
+            from cli.version_check import get_package_version
+            pkg_ver = get_package_version(pkg_dir)
+            data["package"] = {
+                "installed": True,
+                "version": pkg_ver,
+                "location": loc,
+            }
+        else:
+            data["package"] = {"installed": False, "version": None, "location": None}
+    except Exception as e:
+        data["package"] = {"installed": False, "version": None, "location": None, "error": str(e)}
+
+    # ── service / editor ─────────────────────────────────────────────────
+    if pkg_dir:
+        try:
+            from cli.core_bridge import ConsoleSession
+            s = ConsoleSession(root, args.ip, args.port, args.mode, args.timeout,
+                               pkg_dir=pkg_dir, editor_port=args.editor_port)
+            r = s.health()
+            if r.get("ok"):
+                hdata = r.get("data", {})
+                data["service"] = {
+                    "reachable": True,
+                    "port": args.port,
+                    "mode": args.mode,
+                }
+                data["editor"] = {
+                    "state": hdata.get("editorState"),
+                    "compiling": hdata.get("isCompiling", False),
+                    "refreshing": hdata.get("refreshing", False),
+                    "compileErrors": hdata.get("compileErrorCount", 0),
+                }
+                # Build summary from live data
+                unity_ver = hdata.get("unityVersion", "")
+                editor_state = hdata.get("editorState", "")
+                if unity_ver:
+                    result["summary"] = f"Connected to Unity {unity_ver} ({editor_state})" if editor_state else f"Connected to Unity {unity_ver}"
+                else:
+                    result["summary"] = f"Connected ({editor_state})" if editor_state else "Connected"
+                result["ok"] = True
+                result["exitCode"] = 0
+            else:
+                data["service"] = {"reachable": False, "port": args.port, "mode": args.mode}
+                data["editor"] = None
+                result["summary"] = "Service unreachable"
+        except Exception as e:
+            data["service"] = {"reachable": False, "port": args.port, "mode": args.mode, "error": str(e)}
+            data["editor"] = None
+            result["summary"] = f"Service error: {e}"
+    else:
+        data["service"] = {"reachable": False, "port": args.port, "mode": args.mode}
+        data["editor"] = None
+        if root is None:
+            result["summary"] = "No Unity project found"
+        else:
+            result["summary"] = "Package not installed"
+
+    # ── versions ─────────────────────────────────────────────────────────
+    try:
+        from cli.version_check import get_plugin_version, get_package_version, is_aligned
+        plugin_ver = get_plugin_version()
+        pkg_ver = get_package_version(pkg_dir) if pkg_dir else None
+        aligned = is_aligned(plugin_ver, pkg_ver) if pkg_ver else None
+        data["versions"] = {
+            "plugin": plugin_ver,
+            "package": pkg_ver,
+            "aligned": aligned,
+        }
+    except Exception as e:
+        data["versions"] = {"plugin": None, "package": None, "aligned": None, "error": str(e)}
+
+    # ── commands ─────────────────────────────────────────────────────────
+    if pkg_dir and data.get("service", {}).get("reachable"):
+        try:
+            from cli.core_bridge import ConsoleSession
+            s2 = ConsoleSession(root, args.ip, args.port, args.mode, args.timeout,
+                                pkg_dir=pkg_dir, editor_port=args.editor_port)
+            lc = s2.list_commands()
+            if lc.get("ok"):
+                lc_data = lc.get("data", {})
+                rj = lc_data.get("resultJson", lc_data)
+                if isinstance(rj, str):
+                    try:
+                        rj = json.loads(rj)
+                    except (ValueError, TypeError):
+                        rj = {}
+                commands = rj.get("commands", [])
+                builtin_count = sum(1 for c in commands if c.get("commandType", "builtin") == "builtin")
+                custom_count = sum(1 for c in commands if c.get("commandType") == "custom")
+                data["commands"] = {"builtin": builtin_count, "custom": custom_count}
+            else:
+                data["commands"] = {"builtin": None, "custom": None}
+        except Exception as e:
+            data["commands"] = {"builtin": None, "custom": None, "error": str(e)}
+    else:
+        data["commands"] = {"builtin": None, "custom": None}
+
+    json.dump(result, sys.stdout, ensure_ascii=False, indent=2)
+    print()
+    return result["exitCode"]
+
+
 def cmd_status(root, args, agent_root=None):
+    if args.as_json:
+        return _cmd_status_json(root, args, agent_root)
+
     if root is None:
         print("unity_project: NOT FOUND")
         return 1
