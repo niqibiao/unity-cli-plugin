@@ -6,7 +6,7 @@ import sys
 import time
 from pathlib import Path
 
-from cli import PACKAGE_NAME, load_pkg_path, save_pkg_path
+from cli import PACKAGE_NAME, DEFAULT_EDITOR_PORT, load_pkg_path, save_pkg_path
 
 CORE_RELATIVE = Path("Editor/ExternalTool~/console-client")
 _RETRY_DELAY_S = 1
@@ -87,8 +87,9 @@ def _make_post_with_retry(transport_http, state, default_timeout):
         url_base = state.current_server_base_url()
         try:
             return transport_http.post_json(url_base, endpoint, payload, t)
-        except ConnectionRefusedError:
-            # Request never reached the server — safe to retry.
+        except OSError:
+            # OSError covers ConnectionRefusedError and all socket-level
+            # failures, including those raised by third-party HTTP libraries.
             time.sleep(_RETRY_DELAY_S)
             return transport_http.post_json(url_base, endpoint, payload, t)
 
@@ -109,8 +110,8 @@ def _coerce_args_json(cmd):
 class ConsoleSession:
     """Pre-wired facade over csharpconsole_core. One-liner per command."""
 
-    def __init__(self, project_root, ip="127.0.0.1", port=14500, mode="editor", timeout=30,
-                 agent_root=None, pkg_dir=None):
+    def __init__(self, project_root, ip="127.0.0.1", port=DEFAULT_EDITOR_PORT, mode="editor", timeout=30,
+                 agent_root=None, pkg_dir=None, editor_port=None):
         core_path = (pkg_dir / CORE_RELATIVE) if pkg_dir else resolve(project_root, agent_root)
         _ensure_path(core_path)
 
@@ -127,6 +128,13 @@ class ConsoleSession:
         state.ip = ip
         state.port = port
         state.runtime_mode = mode == "runtime"
+        if state.runtime_mode:
+            # Runtime execution targets the player; compile/refresh/health
+            # still go through the editor.
+            state.runtime_ip = ip
+            state.runtime_port = port
+            state.compile_ip = ip
+            state.compile_port = editor_port if editor_port else DEFAULT_EDITOR_PORT
         self._state = state
 
         self._session_id = client_base.generate_session_id(None)
@@ -163,17 +171,23 @@ class ConsoleSession:
             code, cursor, self._session_id,
         )
 
-    def refresh(self, exit_playmode=False):
-        if not exit_playmode:
+    def refresh(self, exit_playmode=False, changed_files=None):
+        payload = {}
+        if exit_playmode:
+            payload["exitPlayModeIfNeeded"] = True
+        if changed_files:
+            payload["changedFiles"] = changed_files
+
+        if not payload:
             return self._client.request_refresh(
                 self._post, self._parser.parse_refresh_http_response, self._mode_name,
             )
-        # Bypass client_base.request_refresh to pass exitPlayModeIfNeeded payload
+
         from csharpconsole_core.models import make_result, new_run_id
         start = time.time()
         run_id = new_run_id()
         try:
-            raw = self._post("refresh", {"exitPlayModeIfNeeded": True})
+            raw = self._post("refresh", payload)
             return self._parser.parse_refresh_http_response(
                 raw, self._mode_name(), run_id, (time.time() - start) * 1000,
             )

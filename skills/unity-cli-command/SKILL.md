@@ -3,9 +3,9 @@ name: unity-cli-command
 description: >
   Structured Unity Editor commands. Covers: GameObject (create/find/modify/destroy/duplicate),
   component (add/remove/get/modify), transform (get/set), scene management, materials,
-  prefabs, screenshots, play mode, profiling, hierarchy query, asset refresh/recompile,
-  asset management (move/copy/delete/create_folder), selection, session, command listing.
-  Preferred over raw C# execution.
+  prefabs (scene instances and direct asset editing), screenshots, play mode, profiling,
+  hierarchy query, asset refresh/recompile, asset management (move/copy/delete/create_folder),
+  selection, session, command listing. Preferred over raw C# execution.
 ---
 
 # Unity CLI Command
@@ -83,11 +83,27 @@ Many commands accept both `path` (hierarchy path like `"Canvas/Button"`) and `in
 
 ### prefab
 
+**Scene instance operations:**
+
 | action | summary | args |
 |--------|---------|------|
 | create | Create a prefab asset from a scene GameObject | savePath: string, gameObjectPath: string, gameObjectInstanceId: int |
 | instantiate | Instantiate a prefab into the active scene | assetPath: string, parentPath: string, position: Vector3 |
 | unpack | Unpack a prefab instance | gameObjectPath: string, gameObjectInstanceId: int, full: bool |
+
+**Direct asset editing** (edit the `.prefab` file without instantiating — `assetPath` is the asset path, `gameObjectPath` is the relative path within the prefab hierarchy):
+
+| action | summary | args |
+|--------|---------|------|
+| asset_get | Get detailed info about a GameObject in a prefab asset | assetPath: string, gameObjectPath: string |
+| asset_hierarchy | Get the hierarchy tree of a prefab asset | assetPath: string, depth: int, includeComponents: bool |
+| asset_add_component | Add a component to a GameObject in a prefab asset | assetPath: string, typeName: string, gameObjectPath: string |
+| asset_get_component | Get serialized properties of a component in a prefab asset | assetPath: string, typeName: string, gameObjectPath: string, index: int |
+| asset_modify_component | Modify serialized fields of a component in a prefab asset | fields: AssetFieldPair[], assetPath: string, typeName: string, gameObjectPath: string, index: int |
+| asset_remove_component | Remove a component from a GameObject in a prefab asset | assetPath: string, typeName: string, gameObjectPath: string, index: int |
+| asset_add_gameobject | Add a child GameObject to a prefab asset | assetPath: string, parentPath: string, name: string |
+| asset_modify_gameobject | Modify a GameObject's properties in a prefab asset | assetPath: string, gameObjectPath: string, name: string, tag: string, layer: int, active: int, isStatic: int |
+| asset_remove_gameobject | Remove a child GameObject from a prefab asset | assetPath: string, gameObjectPath: string |
 
 ### project
 
@@ -182,6 +198,12 @@ python "${CLAUDE_PLUGIN_ROOT}/cli/cs.py" command --json --project "$(pwd)" <name
 
 # Scene hierarchy with components
 ... scene hierarchy '{"depth":3,"includeComponents":true}'
+
+# Inspect a prefab asset's hierarchy
+... prefab asset_hierarchy '{"assetPath":"Assets/Prefabs/Player.prefab","depth":2,"includeComponents":true}'
+
+# Add a component to a prefab asset (no need to instantiate)
+... prefab asset_add_component '{"assetPath":"Assets/Prefabs/Player.prefab","typeName":"BoxCollider","gameObjectPath":"Body"}'
 
 # Discover all commands (including custom)
 python "${CLAUDE_PLUGIN_ROOT}/cli/cs.py" list-commands --json --project "$(pwd)"

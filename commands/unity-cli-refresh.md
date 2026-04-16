@@ -7,11 +7,11 @@ Trigger Unity to re-scan assets and recompile scripts. Use after writing or modi
 **Recommended (one-step):**
 
 ```bash
-python "${CLAUDE_PLUGIN_ROOT}/cli/cs.py" refresh --json --project "$(pwd)" --exit-playmode --wait 60
+python "${CLAUDE_PLUGIN_ROOT}/cli/cs.py" refresh --json --project "$(pwd)" --exit-playmode --wait 120
 ```
 
 - `--exit-playmode` automatically exits play mode before refreshing if needed
-- `--wait TIMEOUT` blocks until the refresh + compile + domain-reload cycle completes (default 60s)
+- `--wait TIMEOUT` blocks until the refresh + compile + domain-reload cycle completes (default 120s, max 600s)
 - Domain reload restarts the HTTP service and clears REPL sessions; `--wait` handles reconnection
 
 After completion, verify with `/unity-cli-status` if needed.
@@ -30,5 +30,5 @@ python "${CLAUDE_PLUGIN_ROOT}/cli/cs.py" command --json --project "$(pwd)" edito
 
 3. Trigger refresh without `--exit-playmode`:
 ```bash
-python "${CLAUDE_PLUGIN_ROOT}/cli/cs.py" refresh --json --project "$(pwd)" --wait 60
+python "${CLAUDE_PLUGIN_ROOT}/cli/cs.py" refresh --json --project "$(pwd)" --wait 120
 ```

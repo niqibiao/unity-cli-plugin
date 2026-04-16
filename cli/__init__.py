@@ -5,6 +5,8 @@ from pathlib import Path
 
 PACKAGE_NAME = "com.zh1zh1.csharpconsole"
 DEFAULT_SOURCE = "https://github.com/niqibiao/unity-csharpconsole.git"
+DEFAULT_EDITOR_PORT = 14500
+DEFAULT_RUNTIME_PORT = 15500
 
 # Cache file lives in the plugin directory, keyed by agent working directory.
 _PLUGIN_DIR = Path(__file__).resolve().parent.parent

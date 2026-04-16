@@ -79,7 +79,7 @@ All post-setup commands return: `{ "ok": bool, "exitCode": int, "summary": str, 
 
 ## Command Catalog
 
-Built-in commands (46) are statically documented in `skills/unity-cli-command/SKILL.md`.
+Built-in commands (59) are statically documented in `skills/unity-cli-command/SKILL.md`.
 User-defined custom commands are cached in `skills/unity-cli-command/dynamic-commands.md` (git-ignored, auto-generated).
 Run `/unity-cli-refresh-commands` after registering new C# commands to update the cache.
 Run `/unity-cli-sync-catalog` to compare the local catalog with the live command list.

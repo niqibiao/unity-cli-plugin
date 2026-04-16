@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 .pkg-cache.json
 skills/unity-cli-command/dynamic-commands.md
+docs

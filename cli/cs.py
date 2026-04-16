@@ -13,7 +13,7 @@ _CLI_DIR = os.path.dirname(os.path.abspath(__file__))
 if os.path.dirname(_CLI_DIR) not in sys.path:
     sys.path.insert(0, os.path.dirname(_CLI_DIR))
 
-from cli import PACKAGE_NAME, DEFAULT_SOURCE, save_pkg_path
+from cli import PACKAGE_NAME, DEFAULT_SOURCE, DEFAULT_EDITOR_PORT, DEFAULT_RUNTIME_PORT, save_pkg_path
 
 
 def _is_unity_root(d):
@@ -66,15 +66,14 @@ def find_project_root(hint=None):
 
 def detect_port(project_root):
     """Read the effective port from Temp/CSharpConsole/refresh_state.json."""
-    state_file = Path(project_root) / "Temp" / "CSharpConsole" / "refresh_state.json"
-    if state_file.exists():
-        try:
-            data = json.loads(state_file.read_text("utf-8"))
-            port = data.get("effectivePort")
-            if port:
-                return int(port)
-        except (json.JSONDecodeError, ValueError):
-            pass
+    try:
+        state_file = Path(project_root) / "Temp" / "CSharpConsole" / "refresh_state.json"
+        data = json.loads(state_file.read_text("utf-8"))
+        port = data.get("effectivePort")
+        if port:
+            return int(port)
+    except (OSError, json.JSONDecodeError, ValueError):
+        pass
     return None
 
 
@@ -267,7 +266,8 @@ def cmd_status(root, args, agent_root=None):
 
     from cli.core_bridge import ConsoleSession
     try:
-        s = ConsoleSession(root, args.ip, args.port, args.mode, args.timeout, pkg_dir=pkg_dir)
+        s = ConsoleSession(root, args.ip, args.port, args.mode, args.timeout, pkg_dir=pkg_dir,
+                          editor_port=args.editor_port)
         r = s.health()
         if r.get("ok"):
             data = r.get("data", {})
@@ -387,6 +387,8 @@ def main():
                             help="Wait for refresh to complete (default timeout: 60s)")
     sp_refresh.add_argument("--exit-playmode", action="store_true",
                             help="Exit play mode before refreshing if needed")
+    sp_refresh.add_argument("--files", nargs="+", default=None, metavar="PATH",
+                            help="Explicit asset paths to import (e.g. Assets/Scripts/Foo.cs)")
 
     sub.add_parser("list-commands", parents=[shared], help="List available commands")
 
@@ -406,21 +408,27 @@ def main():
     root = find_project_root(args.project)
 
     # Auto-detect port if not specified.
-    # refresh_state.json contains the editor service port — only use it for editor mode.
-    default_port = 15500 if args.mode == "runtime" else 14500
-    if args.port is None and root and args.mode != "runtime":
-        args.port = detect_port(root) or default_port
-    elif args.port is None:
-        args.port = default_port
+    # refresh_state.json contains the editor service port.
+    detected_editor_port = None
+    if root and (args.port is None or args.mode == "runtime"):
+        detected_editor_port = detect_port(root)
+    default_port = DEFAULT_RUNTIME_PORT if args.mode == "runtime" else DEFAULT_EDITOR_PORT
+    if args.port is None:
+        if args.mode != "runtime" and detected_editor_port:
+            args.port = detected_editor_port
+        else:
+            args.port = default_port
+    # In runtime mode, compile/refresh/health still target the editor.
+    args.editor_port = (detected_editor_port or DEFAULT_EDITOR_PORT) if args.mode == "runtime" else None
 
     # Validate --wait range
     if hasattr(args, "wait") and args.wait is not None:
         if args.wait < 0:
             print("Error: --wait timeout must be non-negative.", file=sys.stderr)
             sys.exit(1)
-        if args.wait > 300:
-            print(f"Warning: --wait capped to 300s (requested {args.wait}s)", file=sys.stderr)
-            args.wait = 300
+        if args.wait > 600:
+            print(f"Warning: --wait capped to 600s (requested {args.wait}s)", file=sys.stderr)
+            args.wait = 600
 
     # Pre-setup commands
     if args.cmd == "setup":
@@ -444,10 +452,14 @@ def main():
         print("Error: C# Console package not found. Run 'cs setup' (or /unity-cli-setup) first.", file=sys.stderr)
         sys.exit(1)
 
-    s = ConsoleSession(root, args.ip, args.port, args.mode, args.timeout, pkg_dir=pkg_dir)
+    s = ConsoleSession(root, args.ip, args.port, args.mode, args.timeout, pkg_dir=pkg_dir,
+                       editor_port=args.editor_port)
 
     def _refresh():
-        r = s.refresh(exit_playmode=getattr(args, "exit_playmode", False))
+        r = s.refresh(
+            exit_playmode=getattr(args, "exit_playmode", False),
+            changed_files=getattr(args, "files", None),
+        )
         if args.wait is not None:
             if r.get("ok"):
                 r = s.wait_ready(timeout=args.wait)
