@@ -154,6 +154,22 @@ def _clone_with_progress(source, dest):
     return 0
 
 
+def _warn_version_mismatch(pkg_dir):
+    """Print a warning if plugin and package versions are misaligned."""
+    try:
+        from cli.version_check import get_plugin_version, get_package_version, is_aligned, parse_semver
+        plugin_ver = get_plugin_version()
+        package_ver = get_package_version(pkg_dir)
+        if package_ver and not is_aligned(plugin_ver, package_ver):
+            pv_s = parse_semver(plugin_ver)
+            kv_s = parse_semver(package_ver)
+            pl = f"{pv_s[0]}.{pv_s[1]}.x" if pv_s else plugin_ver
+            kl = f"{kv_s[0]}.{kv_s[1]}.x" if kv_s else package_ver
+            print(f"\u26a0 version mismatch: plugin {pl} \u2260 package {kl}")
+    except Exception:
+        pass
+
+
 def cmd_setup(root, args, agent_root=None):
     if root is None:
         print("Error: no Unity project found. Use --project to specify the path.", file=sys.stderr)
@@ -217,6 +233,7 @@ def cmd_setup(root, args, agent_root=None):
                 except FileNotFoundError:
                     print("Error: git is not installed or not on PATH.", file=sys.stderr)
                     return 1
+                _warn_version_mismatch(local_dir)
                 return 0
             # Directory exists but manifest points elsewhere (e.g. git) — update below
         else:
@@ -234,6 +251,13 @@ def cmd_setup(root, args, agent_root=None):
         if PACKAGE_NAME in deps:
             if not getattr(args, "update", False):
                 print(f"Already installed: {PACKAGE_NAME}")
+                try:
+                    from cli.core_bridge import find_package_dir
+                    pkg_dir = find_package_dir(root, agent_root)
+                    if pkg_dir:
+                        _warn_version_mismatch(pkg_dir)
+                except Exception:
+                    pass
                 return 0
             # --update: remove and re-add to force Unity re-resolve
             print(f"Forcing re-resolve of {PACKAGE_NAME} ...")
