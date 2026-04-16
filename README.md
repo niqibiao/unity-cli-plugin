@@ -145,6 +145,8 @@ python cli/cs.py command --json --project . gameobject create '{"name":"Cube","p
 python cli/cs.py refresh --json --project . --exit-playmode --wait 60
 python cli/cs.py batch --json --project . '[{"ns":"gameobject","action":"create","args":{"name":"A"}},{"ns":"gameobject","action":"create","args":{"name":"B"}}]'
 python cli/cs.py list-commands --json --project . --timeout 10
+python cli/cs.py catalog sync --json --project .
+python cli/cs.py catalog list --json --project .
 ```
 
 ### 📦 Commands
@@ -295,6 +297,8 @@ python cli/cs.py list-commands --json --project . --timeout 10
 ### 🔧 Custom Commands
 
 Custom commands are supported. See [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole) for how to define and register them.
+
+The plugin maintains a persistent per-project catalog of custom commands. Run `cs catalog sync` to pull the latest list from Unity and cache it to disk; run `cs catalog list` to view the cached catalog offline without connecting to the Editor.
 
 ### 🏗️ Architecture
 

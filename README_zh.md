@@ -145,6 +145,8 @@ python cli/cs.py command --json --project . gameobject create '{"name":"Cube","p
 python cli/cs.py refresh --json --project . --exit-playmode --wait 60
 python cli/cs.py batch --json --project . '[{"ns":"gameobject","action":"create","args":{"name":"A"}},{"ns":"gameobject","action":"create","args":{"name":"B"}}]'
 python cli/cs.py list-commands --json --project . --timeout 10
+python cli/cs.py catalog sync --json --project .
+python cli/cs.py catalog list --json --project .
 ```
 
 ### 📦 命令
@@ -295,6 +297,8 @@ python cli/cs.py list-commands --json --project . --timeout 10
 ### 🔧 自定义命令
 
 支持自定义命令。定义和注册方式请参考 [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)。
+
+插件为每个 Unity 项目维护一份持久化的自定义命令目录。运行 `cs catalog sync` 可从 Unity 拉取最新命令列表并缓存到磁盘；运行 `cs catalog list` 可在不连接编辑器的情况下离线查看已缓存的目录。
 
 ### 🏗️ 架构
 
