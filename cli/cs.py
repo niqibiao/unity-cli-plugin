@@ -398,6 +398,142 @@ def _filter_commands_by_type(result, type_filter):
     return result
 
 
+# ── Catalog commands ───────────────────────────────────────────────────
+
+def cmd_catalog_sync(root, args, agent_root):
+    from cli.core_bridge import find_package_dir, ConsoleSession
+    from cli import catalog_path
+    from datetime import datetime, timezone
+
+    pkg_dir = find_package_dir(root, agent_root)
+    if pkg_dir is None:
+        print("Error: C# Console package not found. Run 'cs setup' first.", file=sys.stderr)
+        return 1
+
+    s = ConsoleSession(root, args.ip, args.port, args.mode, args.timeout, pkg_dir=pkg_dir,
+                       editor_port=args.editor_port)
+    r = s.list_commands()
+    if not r.get("ok"):
+        msg = r.get("summary", "unknown error")
+        if args.as_json:
+            json.dump({"ok": False, "exitCode": 1, "summary": msg}, sys.stdout, ensure_ascii=False, indent=2)
+            print()
+        else:
+            print(f"Error: list-commands failed: {msg}", file=sys.stderr)
+        return 1
+
+    # Parse commands from response
+    data = r.get("data", {})
+    rj = data.get("resultJson", data)
+    if isinstance(rj, str):
+        try:
+            rj = json.loads(rj)
+        except (ValueError, TypeError):
+            rj = {}
+    commands = rj.get("commands", [])
+
+    # Filter to custom commands only
+    custom = [c for c in commands if c.get("commandType") == "custom"]
+
+    # Load existing catalog to compute diff
+    cat_file = catalog_path(root)
+    old_ids = set()
+    if cat_file.is_file():
+        try:
+            old_data = json.loads(cat_file.read_text("utf-8"))
+            old_ids = {e["id"] for e in old_data.get("commands", [])}
+        except (OSError, json.JSONDecodeError, KeyError):
+            pass
+
+    # Build catalog entries
+    entries = []
+    for c in custom:
+        ns = c.get("namespace", "")
+        action = c.get("action", "")
+        entry = {
+            "id": f"{ns}.{action}",
+            "namespace": ns,
+            "action": action,
+            "summary": c.get("summary", ""),
+            "editorOnly": c.get("editorOnly", False),
+            "args": c.get("args", []),
+        }
+        entries.append(entry)
+
+    new_ids = {e["id"] for e in entries}
+    added = sorted(new_ids - old_ids)
+    removed = sorted(old_ids - new_ids)
+
+    catalog = {
+        "version": 1,
+        "project": str(Path(root).resolve()),
+        "discovered_at": datetime.now(timezone.utc).isoformat(),
+        "commands": entries,
+    }
+
+    cat_file.parent.mkdir(parents=True, exist_ok=True)
+    cat_file.write_text(json.dumps(catalog, indent=2, ensure_ascii=False) + "\n", "utf-8")
+
+    if args.as_json:
+        result = {
+            "ok": True,
+            "exitCode": 0,
+            "summary": f"Synced {len(entries)} custom command(s)",
+            "data": {
+                "catalogFile": str(cat_file),
+                "total": len(entries),
+                "added": added,
+                "removed": removed,
+            },
+        }
+        json.dump(result, sys.stdout, ensure_ascii=False, indent=2)
+        print()
+    else:
+        print(f"Synced {len(entries)} custom command(s) to {cat_file}")
+        if added:
+            print(f"  added: {', '.join(added)}")
+        if removed:
+            print(f"  removed: {', '.join(removed)}")
+
+    return 0
+
+
+def cmd_catalog_list(root, args):
+    from cli import catalog_path
+
+    cat_file = catalog_path(root)
+    if not cat_file.is_file():
+        if args.as_json:
+            json.dump({"ok": False, "exitCode": 1, "summary": "No catalog found. Run 'cs catalog sync' first."},
+                      sys.stdout, ensure_ascii=False, indent=2)
+            print()
+        else:
+            print("Error: no catalog found. Run 'cs catalog sync' first.", file=sys.stderr)
+        return 1
+
+    try:
+        catalog = json.loads(cat_file.read_text("utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"Error: failed to read catalog: {e}", file=sys.stderr)
+        return 1
+
+    if args.as_json:
+        json.dump({"ok": True, "exitCode": 0, "data": catalog}, sys.stdout, ensure_ascii=False, indent=2)
+        print()
+    else:
+        commands = catalog.get("commands", [])
+        print(f"Catalog: {len(commands)} custom command(s)  (synced {catalog.get('discovered_at', '?')})")
+        for c in commands:
+            arg_names = [a.get("name", "?") for a in c.get("args", [])]
+            args_str = f" [{', '.join(arg_names)}]" if arg_names else ""
+            editor_tag = " [editor-only]" if c.get("editorOnly") else ""
+            summary = c.get("summary", "")
+            desc = f" - {summary}" if summary else ""
+            print(f"  {c['id']}{args_str}{editor_tag}{desc}")
+
+    return 0
+
+
 # ── Main ────────────────────────────────────────────────────────────────
 
 def main():
@@ -458,6 +594,11 @@ def main():
 
     sub.add_parser("check-update", parents=[shared], help="Check version alignment and updates")
 
+    sp_cat = sub.add_parser("catalog", parents=[shared], help="Manage custom command catalog")
+    cat_sub = sp_cat.add_subparsers(dest="catalog_cmd")
+    cat_sub.add_parser("sync", parents=[shared], help="Sync catalog from live editor")
+    cat_sub.add_parser("list", parents=[shared], help="List cached catalog")
+
     args = p.parse_args()
     agent_root = args.project or str(Path.cwd())
     root = find_project_root(args.project)
@@ -492,6 +633,17 @@ def main():
         sys.exit(cmd_status(root, args, agent_root))
     if args.cmd == "check-update":
         sys.exit(cmd_check_update(root, args, agent_root))
+    if args.cmd == "catalog":
+        if root is None:
+            print("Error: no Unity project found.", file=sys.stderr)
+            sys.exit(1)
+        if args.catalog_cmd == "sync":
+            sys.exit(cmd_catalog_sync(root, args, agent_root))
+        elif args.catalog_cmd == "list":
+            sys.exit(cmd_catalog_list(root, args))
+        else:
+            sp_cat.print_help()
+            sys.exit(1)
     if not args.cmd:
         p.print_help()
         sys.exit(1)

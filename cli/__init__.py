@@ -49,3 +49,14 @@ def load_pkg_path(agent_root):
         if p.is_dir():
             return p
     return None
+
+
+import hashlib
+
+_CATALOG_DIR = _PLUGIN_DIR / "catalog"
+
+
+def catalog_path(project_root):
+    """Return the catalog JSON path for a given Unity project root."""
+    h = hashlib.sha256(str(Path(project_root).resolve()).encode()).hexdigest()[:8]
+    return _CATALOG_DIR / f"{h}.json"
