@@ -51,12 +51,38 @@ def load_pkg_path(agent_root):
     return None
 
 
-import hashlib
-
-_CATALOG_DIR = _PLUGIN_DIR / "catalog"
+_CATALOG_CACHE_FILE = _PLUGIN_DIR / ".catalog-cache.json"
 
 
-def catalog_path(project_root):
-    """Return the catalog JSON path for a given Unity project root."""
-    h = hashlib.sha256(str(Path(project_root).resolve()).encode()).hexdigest()[:8]
-    return _CATALOG_DIR / f"{h}.json"
+def _load_catalog_cache():
+    try:
+        return json.loads(_CATALOG_CACHE_FILE.read_text("utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_catalog_cache(data):
+    _CATALOG_CACHE_FILE.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n", "utf-8"
+    )
+
+
+def save_catalog_path(project_root, catalog_file):
+    """Cache the user-chosen catalog file path for a Unity project."""
+    key = str(Path(project_root).resolve())
+    data = _load_catalog_cache()
+    data[key] = str(Path(catalog_file).resolve())
+    _save_catalog_cache(data)
+
+
+def load_catalog_path(project_root):
+    """Load cached catalog file path for a Unity project, or None if not set."""
+    key = str(Path(project_root).resolve())
+    data = _load_catalog_cache()
+    path = data.get(key)
+    return Path(path) if path else None
+
+
+def default_catalog_path(project_root):
+    """Default catalog location: inside the Unity project under .unity-cli/."""
+    return Path(project_root).resolve() / ".unity-cli" / "catalog.json"

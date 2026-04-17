@@ -534,9 +534,48 @@ def _filter_commands_by_type(result, type_filter):
 
 # ── Catalog commands ───────────────────────────────────────────────────
 
+def _resolve_catalog_path(root, args):
+    """Resolve where to write/read the catalog for this Unity project.
+
+    Order of precedence:
+    1. --catalog-path arg (and persist it)
+    2. cached path from previous run
+    3. interactive prompt (only if stdin is a TTY and not in --json mode)
+    4. default: {project}/.unity-cli/catalog.json (and persist it)
+    """
+    from cli import (load_catalog_path, save_catalog_path,
+                     default_catalog_path)
+
+    explicit = getattr(args, "catalog_path", None)
+    if explicit:
+        cat_file = Path(explicit).expanduser().resolve()
+        save_catalog_path(root, cat_file)
+        return cat_file
+
+    cached = load_catalog_path(root)
+    if cached:
+        return cached
+
+    default = default_catalog_path(root)
+    interactive = sys.stdin.isatty() and not args.as_json
+    if interactive:
+        prompt = (f"Where should the custom command catalog be stored?\n"
+                  f"  [Enter to accept default: {default}]\n"
+                  f"  Path: ")
+        try:
+            answer = input(prompt).strip()
+        except (EOFError, KeyboardInterrupt):
+            answer = ""
+        chosen = Path(answer).expanduser().resolve() if answer else default
+    else:
+        chosen = default
+
+    save_catalog_path(root, chosen)
+    return chosen
+
+
 def cmd_catalog_sync(root, args, agent_root):
     from cli.core_bridge import find_package_dir, ConsoleSession
-    from cli import catalog_path
     from datetime import datetime, timezone
 
     pkg_dir = find_package_dir(root, agent_root)
@@ -586,8 +625,10 @@ def cmd_catalog_sync(root, args, agent_root):
     # Filter to custom commands only
     custom = [c for c in commands if c.get("commandType") == "custom"]
 
+    # Resolve where this project's catalog lives (prompts on first sync)
+    cat_file = _resolve_catalog_path(root, args)
+
     # Load existing catalog to compute diff
-    cat_file = catalog_path(root)
     old_ids = set()
     if cat_file.is_file():
         try:
@@ -650,16 +691,33 @@ def cmd_catalog_sync(root, args, agent_root):
 
 
 def cmd_catalog_list(root, args):
-    from cli import catalog_path
+    from cli import load_catalog_path
 
-    cat_file = catalog_path(root)
-    if not cat_file.is_file():
+    explicit = getattr(args, "catalog_path", None)
+    if explicit:
+        cat_file = Path(explicit).expanduser().resolve()
+    else:
+        cat_file = load_catalog_path(root)
+
+    if cat_file is None:
+        msg = ("No catalog path configured for this project. "
+               "Run 'cs catalog sync' first or pass --catalog-path.")
         if args.as_json:
-            json.dump({"ok": False, "exitCode": 1, "summary": "No catalog found. Run 'cs catalog sync' first."},
+            json.dump({"ok": False, "exitCode": 1, "summary": msg},
                       sys.stdout, ensure_ascii=False, indent=2)
             print()
         else:
-            print("Error: no catalog found. Run 'cs catalog sync' first.", file=sys.stderr)
+            print(f"Error: {msg}", file=sys.stderr)
+        return 1
+
+    if not cat_file.is_file():
+        msg = f"Catalog file does not exist: {cat_file}. Run 'cs catalog sync' first."
+        if args.as_json:
+            json.dump({"ok": False, "exitCode": 1, "summary": msg},
+                      sys.stdout, ensure_ascii=False, indent=2)
+            print()
+        else:
+            print(f"Error: {msg}", file=sys.stderr)
         return 1
 
     try:
@@ -747,8 +805,12 @@ def main():
 
     sp_cat = sub.add_parser("catalog", parents=[shared], help="Manage custom command catalog")
     cat_sub = sp_cat.add_subparsers(dest="catalog_cmd")
-    cat_sub.add_parser("sync", parents=[shared], help="Sync catalog from live editor")
-    cat_sub.add_parser("list", parents=[shared], help="List cached catalog")
+    sp_cat_sync = cat_sub.add_parser("sync", parents=[shared], help="Sync catalog from live editor")
+    sp_cat_sync.add_argument("--catalog-path", dest="catalog_path", default=None,
+                             help="Catalog file path (default: prompt or {project}/.unity-cli/catalog.json)")
+    sp_cat_list = cat_sub.add_parser("list", parents=[shared], help="List cached catalog")
+    sp_cat_list.add_argument("--catalog-path", dest="catalog_path", default=None,
+                             help="Override the cached catalog file path for this read")
 
     args = p.parse_args()
     agent_root = args.project or str(Path.cwd())
