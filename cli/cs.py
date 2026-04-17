@@ -333,7 +333,7 @@ def _cmd_status_json(root, args, agent_root=None):
                     "state": hdata.get("editorState"),
                     "compiling": hdata.get("isCompiling", False),
                     "refreshing": hdata.get("refreshing", False),
-                    "compileErrors": hdata.get("compileErrorCount", 0),
+                    "compileFailed": hdata.get("compileFailed", False),
                 }
                 # Build summary from live data
                 unity_ver = hdata.get("unityVersion", "")
