@@ -26,24 +26,16 @@ You:    "Create 10 cubes in a circle and add Rigidbody to each"
 Claude: Done. 10 cubes created at radius 5, each with a Rigidbody component.
 ```
 
-### ⚡ CLI + Skills, Not MCP
+### ⚡ CLI + Skills
 
-Same approach as [Playwright CLI](https://github.com/microsoft/playwright-cli) — CLI commands exposed through Claude Code's skill system instead of MCP. Why:
+CLI commands exposed through Claude Code's skill system.
 
-- **Token-efficient.** Skills load on demand; MCP loads all tool schemas on every request.
+- **Token-efficient.** Skills load on demand.
 - **Unrestricted.** Falls back to a full [Roslyn C# REPL](https://github.com/niqibiao/unity-csharpconsole) — not limited to predefined tools.
 - **No sidecar.** Service runs inside Unity Editor. No extra process.
 - **Workflow-aware.** Understands Unity's compile lifecycle, play mode, domain reload.
-
-
-|                          | CLI + Skills (this plugin) | MCP                  |
-| ------------------------ | -------------------------- | -------------------- |
-| Context window cost      | **Low** (on-demand)        | High (always loaded) |
-| C# REPL fallback         | **Yes**                    | Limited or none      |
-| External server          | **None** (in-process)      | Required             |
-| Play-mode-aware refresh  | **Yes**                    | No                   |
-| Custom command discovery | **Automatic**              | Manual registration  |
-| Runtime / IL2CPP         | **Yes** (HybridCLR)        | Varies               |
+- **Automatic custom command discovery.** User-defined C# commands are synced into the skill catalog.
+- **Runtime / IL2CPP support.** Works with HybridCLR for runtime builds.
 
 
 ### 🚀 Quick Start — Claude Code

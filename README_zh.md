@@ -26,24 +26,16 @@
 Claude:  完成。10 个 Cube 已在半径 5 处创建，均已添加 Rigidbody 组件。
 ```
 
-### ⚡ 为什么用 CLI + Skill，而不是 MCP？
+### ⚡ CLI + Skill
 
-与 [Playwright CLI](https://github.com/microsoft/playwright-cli) 相同的架构 —— 通过 Claude Code 的 Skill 体系暴露 CLI 命令，而非 MCP。原因：
+通过 Claude Code 的 Skill 体系暴露 CLI 命令。
 
-- **省 token。** Skill 按需加载；MCP 每次请求都加载全部工具 Schema。
+- **省 token。** Skill 按需加载。
 - **无限制。** 可回退到完整的 [Roslyn C# REPL](https://github.com/niqibiao/unity-csharpconsole) —— 不受预定义工具限制。
 - **无需额外进程。** 服务运行在 Unity Editor 进程内，零额外基础设施。
 - **感知工作流。** 理解 Unity 的编译生命周期、Play Mode、域重载。
-
-
-|                  | CLI + Skill（本插件）  | MCP     |
-| ---------------- | ----------------- | ------- |
-| 上下文窗口消耗          | **低**（按需加载）       | 高（始终加载） |
-| C# REPL 兜底       | **支持**            | 有限或无    |
-| 外部服务器            | **无**（进程内）        | 需要      |
-| 感知 Play Mode 的刷新 | **支持**            | 否       |
-| 自定义命令发现          | **自动**            | 手动注册    |
-| 运行时 / IL2CPP     | **支持**（HybridCLR） | 视情况     |
+- **自定义命令自动发现。** 用户定义的 C# 命令会自动同步到 Skill 目录。
+- **运行时 / IL2CPP 支持。** 配合 HybridCLR 可在运行时构建中使用。
 
 
 ### 🚀 快速开始 — Claude Code
