@@ -111,7 +111,8 @@ class ConsoleSession:
     """Pre-wired facade over csharpconsole_core. One-liner per command."""
 
     def __init__(self, project_root, ip="127.0.0.1", port=DEFAULT_EDITOR_PORT, mode="editor", timeout=30,
-                 agent_root=None, pkg_dir=None, editor_port=None):
+                 agent_root=None, pkg_dir=None,
+                 compile_ip=None, compile_port=None):
         core_path = (pkg_dir / CORE_RELATIVE) if pkg_dir else resolve(project_root, agent_root)
         _ensure_path(core_path)
 
@@ -133,8 +134,8 @@ class ConsoleSession:
             # still go through the editor.
             state.runtime_ip = ip
             state.runtime_port = port
-            state.compile_ip = ip
-            state.compile_port = editor_port if editor_port else DEFAULT_EDITOR_PORT
+            state.compile_ip = compile_ip or "127.0.0.1"
+            state.compile_port = compile_port or DEFAULT_EDITOR_PORT
         self._state = state
 
         self._session_id = client_base.generate_session_id(None)

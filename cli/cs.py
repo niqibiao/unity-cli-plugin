@@ -170,6 +170,13 @@ def _warn_version_mismatch(pkg_dir):
         pass
 
 
+def _new_session(root, args, pkg_dir):
+    from cli.core_bridge import ConsoleSession
+    return ConsoleSession(root, args.ip, args.port, args.mode, args.timeout,
+                          pkg_dir=pkg_dir,
+                          compile_ip=args.compile_ip, compile_port=args.compile_port)
+
+
 def cmd_setup(root, args, agent_root=None):
     if root is None:
         print("Error: no Unity project found. Use --project to specify the path.", file=sys.stderr)
@@ -318,9 +325,7 @@ def _cmd_status_json(root, args, agent_root=None):
     # ── service / editor ─────────────────────────────────────────────────
     if pkg_dir:
         try:
-            from cli.core_bridge import ConsoleSession
-            s = ConsoleSession(root, args.ip, args.port, args.mode, args.timeout,
-                               pkg_dir=pkg_dir, editor_port=args.editor_port)
+            s = _new_session(root, args, pkg_dir)
             r = s.health()
             if r.get("ok"):
                 hdata = r.get("data", {})
@@ -377,9 +382,7 @@ def _cmd_status_json(root, args, agent_root=None):
     # ── commands ─────────────────────────────────────────────────────────
     if pkg_dir and data.get("service", {}).get("reachable"):
         try:
-            from cli.core_bridge import ConsoleSession
-            s2 = ConsoleSession(root, args.ip, args.port, args.mode, args.timeout,
-                                pkg_dir=pkg_dir, editor_port=args.editor_port)
+            s2 = _new_session(root, args, pkg_dir)
             lc = s2.list_commands()
             if lc.get("ok"):
                 lc_data = lc.get("data", {})
@@ -423,10 +426,8 @@ def cmd_status(root, args, agent_root=None):
     if not pkg_dir:
         return 0
 
-    from cli.core_bridge import ConsoleSession
     try:
-        s = ConsoleSession(root, args.ip, args.port, args.mode, args.timeout, pkg_dir=pkg_dir,
-                          editor_port=args.editor_port)
+        s = _new_session(root, args, pkg_dir)
         r = s.health()
         if r.get("ok"):
             data = r.get("data", {})
@@ -575,7 +576,7 @@ def _resolve_catalog_path(root, args):
 
 
 def cmd_catalog_sync(root, args, agent_root):
-    from cli.core_bridge import find_package_dir, ConsoleSession
+    from cli.core_bridge import find_package_dir
     from datetime import datetime, timezone
 
     pkg_dir = find_package_dir(root, agent_root)
@@ -583,8 +584,7 @@ def cmd_catalog_sync(root, args, agent_root):
         print("Error: C# Console package not found. Run 'cs setup' first.", file=sys.stderr)
         return 1
 
-    s = ConsoleSession(root, args.ip, args.port, args.mode, args.timeout, pkg_dir=pkg_dir,
-                       editor_port=args.editor_port)
+    s = _new_session(root, args, pkg_dir)
     r = s.list_commands()
     if not r.get("ok"):
         msg = r.get("summary", "unknown error")
@@ -752,6 +752,10 @@ def main():
     shared.add_argument("--ip", default="127.0.0.1")
     shared.add_argument("--port", type=int, default=None)
     shared.add_argument("--mode", choices=["editor", "runtime"], default="editor")
+    shared.add_argument("--compile-ip", dest="compile_ip", default=None,
+                        help="Editor/compile server IP (runtime mode only, default: 127.0.0.1)")
+    shared.add_argument("--compile-port", dest="compile_port", type=int, default=None,
+                        help="Editor/compile server port (runtime mode only, default: auto-detect)")
     shared.add_argument("--timeout", type=int, default=30, help="HTTP timeout in seconds (default: 30)")
     shared.add_argument("--json", dest="as_json", action="store_true",
                         help="JSON output (compact by default, use --verbose for full)")
@@ -816,10 +820,11 @@ def main():
     agent_root = args.project or str(Path.cwd())
     root = find_project_root(args.project)
 
-    # Auto-detect port if not specified.
-    # refresh_state.json contains the editor service port.
+    # Auto-detect editor port from refresh_state.json when needed for
+    # --port (editor mode) or --compile-port fallback (runtime mode).
     detected_editor_port = None
-    if root and (args.port is None or args.mode == "runtime"):
+    needs_detect = args.port is None or (args.mode == "runtime" and args.compile_port is None)
+    if root and needs_detect:
         detected_editor_port = detect_port(root)
     default_port = DEFAULT_RUNTIME_PORT if args.mode == "runtime" else DEFAULT_EDITOR_PORT
     if args.port is None:
@@ -828,7 +833,8 @@ def main():
         else:
             args.port = default_port
     # In runtime mode, compile/refresh/health still target the editor.
-    args.editor_port = (detected_editor_port or DEFAULT_EDITOR_PORT) if args.mode == "runtime" else None
+    if args.mode == "runtime" and args.compile_port is None:
+        args.compile_port = detected_editor_port or DEFAULT_EDITOR_PORT
 
     # Validate --wait range
     if hasattr(args, "wait") and args.wait is not None:
@@ -866,14 +872,13 @@ def main():
         print("Error: no Unity project found. Use --project to specify the path.", file=sys.stderr)
         sys.exit(1)
 
-    from cli.core_bridge import find_package_dir, ConsoleSession
+    from cli.core_bridge import find_package_dir
     pkg_dir = find_package_dir(root, agent_root)
     if pkg_dir is None:
         print("Error: C# Console package not found. Run 'cs setup' (or /unity-cli-setup) first.", file=sys.stderr)
         sys.exit(1)
 
-    s = ConsoleSession(root, args.ip, args.port, args.mode, args.timeout, pkg_dir=pkg_dir,
-                       editor_port=args.editor_port)
+    s = _new_session(root, args, pkg_dir)
 
     def _refresh():
         r = s.refresh(

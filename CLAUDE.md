@@ -10,7 +10,7 @@ Claude Code plugin providing a thin Python CLI for interacting with Unity Editor
 
 Entry point: `python "${CLAUDE_PLUGIN_ROOT}/cli/cs.py" <command> [--json] [args]`
 
-Shared flags: `--project <path>`, `--ip` (default 127.0.0.1), `--port` (default 14500), `--mode editor|runtime`, `--timeout` (default 30), `--json`
+Shared flags: `--project <path>`, `--ip` (default 127.0.0.1), `--port` (default 14500), `--mode editor|runtime`, `--compile-ip` (runtime mode only, default 127.0.0.1), `--compile-port` (runtime mode only, default auto-detect), `--timeout` (default 30), `--json`
 
 ### Two-phase lifecycle
 
