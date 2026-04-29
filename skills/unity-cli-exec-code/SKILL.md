@@ -14,11 +14,19 @@ Always prefer the `unity-cli-command` skill first.
 
 ## Usage
 
+Inline code:
+
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/cli/cs.py" exec --json --project "$(pwd)" "<C# code>"
 ```
 
-All examples below use this exact command, showing only the C# code portion for brevity.
+From a file (avoids shell quoting hazards for long/complex snippets):
+
+```bash
+python "${CLAUDE_PLUGIN_ROOT}/cli/cs.py" exec --json --project "$(pwd)" --file path/to/snippet.cs
+```
+
+All examples below use the inline form, showing only the C# code portion for brevity.
 
 ## REPL Features
 

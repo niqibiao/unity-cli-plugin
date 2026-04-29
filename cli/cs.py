@@ -746,20 +746,24 @@ def cmd_catalog_list(root, args):
 # ── Main ────────────────────────────────────────────────────────────────
 
 def main():
-    # Shared flags available on every subcommand
+    # Shared flags available on every subcommand.
+    # Use SUPPRESS so subparser parses don't overwrite values supplied to the
+    # top-level parser (argparse parents+subparsers footgun).  Defaults are
+    # filled in after parse_args via _SHARED_DEFAULTS.
+    SUPPRESS = argparse.SUPPRESS
     shared = argparse.ArgumentParser(add_help=False)
-    shared.add_argument("--project", help="Unity project root (auto-detected)")
-    shared.add_argument("--ip", default="127.0.0.1")
-    shared.add_argument("--port", type=int, default=None)
-    shared.add_argument("--mode", choices=["editor", "runtime"], default="editor")
-    shared.add_argument("--compile-ip", dest="compile_ip", default=None,
+    shared.add_argument("--project", default=SUPPRESS, help="Unity project root (auto-detected)")
+    shared.add_argument("--ip", default=SUPPRESS)
+    shared.add_argument("--port", type=int, default=SUPPRESS)
+    shared.add_argument("--mode", choices=["editor", "runtime"], default=SUPPRESS)
+    shared.add_argument("--compile-ip", dest="compile_ip", default=SUPPRESS,
                         help="Editor/compile server IP (runtime mode only, default: 127.0.0.1)")
-    shared.add_argument("--compile-port", dest="compile_port", type=int, default=None,
+    shared.add_argument("--compile-port", dest="compile_port", type=int, default=SUPPRESS,
                         help="Editor/compile server port (runtime mode only, default: auto-detect)")
-    shared.add_argument("--timeout", type=int, default=30, help="HTTP timeout in seconds (default: 30)")
-    shared.add_argument("--json", dest="as_json", action="store_true",
+    shared.add_argument("--timeout", type=int, default=SUPPRESS, help="HTTP timeout in seconds (default: 30)")
+    shared.add_argument("--json", dest="as_json", action="store_true", default=SUPPRESS,
                         help="JSON output (compact by default, use --verbose for full)")
-    shared.add_argument("--verbose", action="store_true",
+    shared.add_argument("--verbose", action="store_true", default=SUPPRESS,
                         help="Full JSON output with all diagnostic fields")
 
     p = argparse.ArgumentParser(prog="cs", description="Unity C# Console CLI", parents=[shared])
@@ -775,7 +779,9 @@ def main():
     sub.add_parser("status", parents=[shared], help="Package + connection status")
 
     sp_exec = sub.add_parser("exec", parents=[shared], help="Execute C# code")
-    sp_exec.add_argument("code", help="C# code to execute")
+    sp_exec.add_argument("code", nargs="?", help="C# code to execute (inline; omit when using --file)")
+    sp_exec.add_argument("--file", "-f", dest="file",
+                         help="Read C# code from a file")
 
     sp_cmd = sub.add_parser("command", parents=[shared], help="Run framework command")
     sp_cmd.add_argument("namespace", help="Command namespace")
@@ -817,6 +823,31 @@ def main():
                              help="Override the cached catalog file path for this read")
 
     args = p.parse_args()
+
+    # Apply defaults for any shared arg the user didn't pass (SUPPRESS leaves
+    # attr unset).  This restores the original UX while preventing subparser
+    # overwrites of values given at the top level.
+    for k, v in (("project", None), ("ip", "127.0.0.1"), ("port", None),
+                 ("mode", "editor"), ("compile_ip", None), ("compile_port", None),
+                 ("timeout", 30), ("as_json", False), ("verbose", False)):
+        if not hasattr(args, k):
+            setattr(args, k, v)
+
+    # Resolve `code` from --file for exec
+    if args.cmd == "exec":
+        file = getattr(args, "file", None)
+        if file is not None:
+            if args.code is not None:
+                p.error("argument --file: not allowed with positional code")
+            try:
+                args.code = Path(file).read_text(encoding="utf-8-sig")
+            except (OSError, UnicodeError) as e:
+                p.error(f"--file: {e}")
+            if not args.code.strip():
+                p.error(f"--file: {file} is empty")
+        elif args.code is None:
+            p.error("missing C# code: provide it inline or via --file")
+
     agent_root = args.project or str(Path.cwd())
     root = find_project_root(args.project)
 

@@ -16,7 +16,30 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Extract notes from CHANGELOG.md
+        id: notes
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          VERSION="${VERSION%-codex}"
+          if [ -f CHANGELOG.md ]; then
+            awk -v ver="$VERSION" '
+              /^## / { if (found) exit; if (index($0, "[" ver "]")) { found=1; next } }
+              found { print }
+            ' CHANGELOG.md > release-notes.md
+          fi
+          if [ -s release-notes.md ] && grep -q '[^[:space:]]' release-notes.md; then
+            echo "has_notes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_notes=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create GitHub Release
-        run: gh release create "${{ github.ref_name }}" --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ steps.notes.outputs.has_notes }}" = "true" ]; then
+            gh release create "${{ github.ref_name }}" --notes-file release-notes.md
+          else
+            gh release create "${{ github.ref_name }}" --generate-notes
+          fi

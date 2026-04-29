@@ -234,6 +234,8 @@ jobs:
           print("\n=== Conversion complete ===")
 
       - name: Push to codex-plugin branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -248,10 +250,26 @@ jobs:
           echo "Pushed to codex-plugin branch"
 
           # If triggered by a tag push, create the same tag with -codex suffix
+          # AND publish a GitHub Release for it (the GITHUB_TOKEN-pushed tag
+          # alone won't trigger release.yml — anti-recursion safety).
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             TAG_NAME="${GITHUB_REF#refs/tags/}"
             CODEX_TAG="${TAG_NAME}-codex"
             git tag "$CODEX_TAG"
             git push origin "$CODEX_TAG" --force
             echo "Tagged codex-plugin branch as ${CODEX_TAG}"
+
+            VERSION="${TAG_NAME#v}"
+            if [ -f CHANGELOG.md ]; then
+              awk -v ver="$VERSION" '
+                /^## / { if (found) exit; if (index($0, "[" ver "]")) { found=1; next } }
+                found { print }
+              ' CHANGELOG.md > release-notes.md
+            fi
+            if [ -s release-notes.md ] && grep -q '[^[:space:]]' release-notes.md; then
+              gh release create "$CODEX_TAG" --target codex-plugin --notes-file release-notes.md
+            else
+              gh release create "$CODEX_TAG" --target codex-plugin --generate-notes
+            fi
+            echo "Released ${CODEX_TAG}"
           fi

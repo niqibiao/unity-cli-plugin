@@ -27,7 +27,7 @@ When a built-in framework command exists, prefer `cs command <ns> <action>` over
 |---------|-------|-------------|
 | `cs setup [--source URL] [--update]` | pre | Add/update package in Packages/manifest.json |
 | `cs status` | pre | Package + connection status + version info |
-| `cs exec <code>` | post | Execute C# code |
+| `cs exec <code> \| --file FILE` | post | Execute C# code (inline or from file) |
 | `cs command <ns> <action> [args]` | post | Run framework command |
 | `cs batch <json-array> [--stop-on-error]` | post | Execute multiple commands in one HTTP roundtrip |
 | `cs health` | post | Service health check |
