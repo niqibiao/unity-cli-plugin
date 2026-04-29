@@ -86,6 +86,29 @@ User-defined custom commands are cached in `skills/unity-cli-command/dynamic-com
 Run `/unity-cli-refresh-commands` after registering new C# commands to update the cache.
 Run `/unity-cli-sync-catalog` to compare the local catalog with the live command list.
 
+## Release Process
+
+When bumping the version (e.g. on user request "bump to X.Y.Z and tag"), do
+**all** of the following in one commit before tagging — do not ask for
+clarification on the protocol:
+
+1. **`CHANGELOG.md`** — rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`
+   (use today's date). Insert a fresh empty `## [Unreleased]` block above it.
+   The release workflow extracts this section verbatim as the GitHub Release
+   body, so make sure pending entries already live under `[Unreleased]` before
+   the bump (move stray notes if needed).
+2. **`.claude-plugin/plugin.json`** — bump `version` field.
+3. **`.claude-plugin/marketplace.json`** — bump the matching `version` entry
+   (must stay in lockstep with `plugin.json`).
+4. **Commit** with a `chore:` or `feat:` subject naming the version.
+5. **`git tag vX.Y.Z`** locally; **never push without explicit user
+   confirmation** (memory rule).
+
+The `release.yml` and `convert-codex.yml` workflows handle the rest:
+they read the matching CHANGELOG section, fall back to `--generate-notes`
+when no section is found, and create matching `vX.Y.Z` and `vX.Y.Z-codex`
+releases with proper titles.
+
 ## Development Notes
 
 - **Always ask before pushing** — never `git push` without explicit user confirmation

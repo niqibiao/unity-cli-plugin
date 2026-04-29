@@ -11,6 +11,12 @@ the section matching the pushed tag (without the leading `v`) as release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- Release workflow now passes `--title "vX.Y.Z"` to `gh release create` so
+  the rendered release title is just the tag, not the GitHub web fallback
+  of `{tag}: {commit subject}`.
+
 ## [1.4.2] - 2026-04-29
 
 ### Added

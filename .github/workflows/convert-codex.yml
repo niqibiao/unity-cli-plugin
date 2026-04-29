@@ -267,9 +267,9 @@ jobs:
               ' CHANGELOG.md > release-notes.md
             fi
             if [ -s release-notes.md ] && grep -q '[^[:space:]]' release-notes.md; then
-              gh release create "$CODEX_TAG" --target codex-plugin --notes-file release-notes.md
+              gh release create "$CODEX_TAG" --title "$CODEX_TAG" --target codex-plugin --notes-file release-notes.md
             else
-              gh release create "$CODEX_TAG" --target codex-plugin --generate-notes
+              gh release create "$CODEX_TAG" --title "$CODEX_TAG" --target codex-plugin --generate-notes
             fi
             echo "Released ${CODEX_TAG}"
           fi
