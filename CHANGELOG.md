@@ -11,6 +11,8 @@ the section matching the pushed tag (without the leading `v`) as release notes.
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-04-29
+
 ### Changed
 
 - `cs setup` now pins the package to the latest `vMAJOR.MINOR.*` tag in the
@@ -27,6 +29,9 @@ the section matching the pushed tag (without the leading `v`) as release notes.
 
 ### Fixed
 
+- `cs setup` no longer prints a misleading `Pinning to vX.Y.Z` line (and
+  no longer hits the network) on no-op runs where the package is already
+  installed and `--update` was not passed. Pin resolution is now lazy.
 - Release workflow now passes `--title "vX.Y.Z"` to `gh release create` so
   the rendered release title is just the tag, not the GitHub web fallback
   of `{tag}: {commit subject}`.
