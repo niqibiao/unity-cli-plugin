@@ -3,6 +3,7 @@
 import base64
 import json
 import re
+import subprocess
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -120,3 +121,47 @@ def check_versions(pkg_dir, source, timeout=5):
         "aligned": aligned,
         "updateAvailable": update_available,
     }
+
+
+_TAG_LINE_RE = re.compile(r"^[0-9a-f]+\s+refs/tags/(?P<name>.+?)(?:\^\{\})?$")
+
+
+def find_matching_tag(source, plugin_version, timeout=10):
+    """Discover the highest-patch git tag matching v{major}.{minor}.* in the
+    remote at *source*, where major/minor come from *plugin_version*.
+
+    Returns the tag name as it appears in the remote (e.g., 'v1.4.3'), or
+    None on no-match, ls-remote failure, missing git, timeout, or
+    unparseable plugin version.
+    """
+    target = parse_semver(plugin_version)
+    if target is None:
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "ls-remote", "--tags", source],
+            capture_output=True, text=True, timeout=timeout,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+
+    seen = {}
+    for line in result.stdout.splitlines():
+        m = _TAG_LINE_RE.match(line.strip())
+        if not m:
+            continue
+        name = m.group("name")
+        sv = parse_semver(name)
+        if sv is None:
+            continue
+        if sv[0] != target[0] or sv[1] != target[1]:
+            continue
+        # Higher patch wins; ties resolved by first-seen.
+        cur = seen.get((sv[0], sv[1]))
+        if cur is None or sv[2] > cur[1]:
+            seen[(sv[0], sv[1])] = (name, sv[2])
+
+    match = seen.get((target[0], target[1]))
+    return match[0] if match else None
