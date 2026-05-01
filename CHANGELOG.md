@@ -11,6 +11,20 @@ the section matching the pushed tag (without the leading `v`) as release notes.
 
 ## [Unreleased]
 
+### Changed
+
+- `cs setup` now pins the package to the latest `vMAJOR.MINOR.*` tag in the
+  remote that matches the plugin's version, instead of writing a bare URL
+  (which Unity resolved to HEAD of the default branch). This eliminates the
+  drift that produced `plugin X.Y.x ≠ package X.Z.x` warnings shortly
+  after a package release. Discovery uses `git ls-remote --tags`; on no
+  match or network failure, setup falls back to HEAD with a one-line
+  warning. Pass `--no-pin` to opt out, or `--source URL#tag` to pin
+  explicitly.
+- `cs setup --method local` now `git checkout`s the resolved tag in the
+  local clone (fresh or existing). The clone ends in detached HEAD; if you
+  intend to develop in the clone, run `git checkout main` afterward.
+
 ### Fixed
 
 - Release workflow now passes `--title "vX.Y.Z"` to `gh release create` so
