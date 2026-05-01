@@ -170,6 +170,39 @@ def _warn_version_mismatch(pkg_dir):
         pass
 
 
+def _resolve_pin(source, no_pin):
+    """Decide what to write into the manifest and what tag to check out.
+
+    Returns (effective_source, target_tag, message_or_None) where:
+      - effective_source: the string to write to manifest (git method) or
+        the URL portion to clone (local method always strips the fragment).
+      - target_tag: tag name to use with `git clone --branch` / `git checkout`,
+        or None if no tag was resolved.
+      - message_or_None: a single line to print, or None for silence.
+    """
+    # User-supplied explicit pin (URL#tag) wins over both discovery and --no-pin.
+    if "#" in source:
+        frag = source.split("#", 1)[1]
+        return source, frag, f"Using explicit pin: {frag}"
+
+    if no_pin:
+        return source, None, None
+
+    from cli.version_check import (find_matching_tag, get_plugin_version,
+                                   parse_semver)
+    plugin_ver = get_plugin_version()
+    if not plugin_ver or plugin_ver == "unknown":
+        return source, None, "Warning: cannot determine plugin version \u2014 installing from HEAD"
+
+    tag = find_matching_tag(source, plugin_ver)
+    if tag:
+        return f"{source}#{tag}", tag, f"Pinning to {tag} (matched plugin {plugin_ver})"
+
+    sv = parse_semver(plugin_ver)
+    label = f"v{sv[0]}.{sv[1]}.*" if sv else "matching"
+    return source, None, f"Warning: no {label} tag found in {source} \u2014 installing from HEAD"
+
+
 def _new_session(root, args, pkg_dir):
     from cli.core_bridge import ConsoleSession
     return ConsoleSession(root, args.ip, args.port, args.mode, args.timeout,
@@ -775,6 +808,8 @@ def main():
                           help="git = Unity resolves URL, local = clone to Packages/ (default: git)")
     sp_setup.add_argument("--update", action="store_true",
                           help="Update existing installation instead of skipping")
+    sp_setup.add_argument("--no-pin", dest="no_pin", action="store_true",
+                          help="Install from HEAD of the default branch instead of pinning to a tag matching the plugin major.minor")
 
     sub.add_parser("status", parents=[shared], help="Package + connection status")
 
