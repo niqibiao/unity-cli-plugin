@@ -113,13 +113,24 @@ def _slim_result(result):
 _PROGRESS_RE = re.compile(r"^(.+?):\s+(\d+)%\s+\((\d+)/(\d+)\)")
 
 
-def _clone_with_progress(source, dest):
-    """Clone a git repo, printing progress at 25% intervals."""
-    print(f"Cloning {source} (shallow)")
+def _clone_with_progress(source, dest, tag=None):
+    """Clone a git repo, printing progress at 25% intervals.
+
+    If *tag* is given, clones that tag specifically (shallow). The *source*
+    must be a bare URL — strip any '#fragment' before calling.
+    """
+    if tag:
+        print(f"Cloning {source} at {tag} (shallow)")
+        cmd = ["git", "clone", "--depth", "1", "--branch", tag, "--progress",
+               str(source), str(dest)]
+    else:
+        print(f"Cloning {source} (shallow)")
+        cmd = ["git", "clone", "--depth", "1", "--progress",
+               str(source), str(dest)]
     print("Connecting...", flush=True)
     try:
         proc = subprocess.Popen(
-            ["git", "clone", "--depth", "1", "--progress", str(source), str(dest)],
+            cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
         )
@@ -285,7 +296,8 @@ def cmd_setup(root, args, agent_root=None):
                 import shutil
                 shutil.rmtree(local_dir)
             local_dir.parent.mkdir(parents=True, exist_ok=True)
-            rc = _clone_with_progress(raw_source, local_dir)
+            clone_url = raw_source.split("#", 1)[0]
+            rc = _clone_with_progress(clone_url, local_dir, tag=target_tag)
             if rc != 0:
                 return 1
 
