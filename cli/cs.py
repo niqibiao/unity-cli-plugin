@@ -165,6 +165,73 @@ def _clone_with_progress(source, dest, tag=None):
     return 0
 
 
+def _pull_local(local_dir):
+    """Run `git pull --ff-only` in *local_dir*. Returns 0 on success."""
+    print(f"Checking for updates: {local_dir}")
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(local_dir), "pull", "--ff-only"],
+            capture_output=True, text=True,
+        )
+    except FileNotFoundError:
+        print("Error: git is not installed or not on PATH.", file=sys.stderr)
+        return 1
+    if result.returncode != 0:
+        if result.stderr:
+            print(result.stderr.strip(), file=sys.stderr)
+        print("Error: git pull failed. The local clone may have diverged; "
+              "delete it and re-run setup.", file=sys.stderr)
+        return 1
+    stdout = result.stdout.strip()
+    if "Already up to date" in stdout or "Already up-to-date" in stdout:
+        print(f"Already up to date (local): {local_dir}")
+    else:
+        print(f"Updated (local): {local_dir}")
+    return 0
+
+
+def _checkout_tag_in_local(local_dir, tag):
+    """Fetch tags and checkout *tag* in the existing clone. Returns 0 on success."""
+    print(f"Fetching tags: {local_dir}")
+    try:
+        fetch = subprocess.run(
+            ["git", "-C", str(local_dir), "fetch", "--tags", "--quiet"],
+            capture_output=True, text=True,
+        )
+    except FileNotFoundError:
+        print("Error: git is not installed or not on PATH.", file=sys.stderr)
+        return 1
+    if fetch.returncode != 0:
+        if fetch.stderr:
+            print(fetch.stderr.strip(), file=sys.stderr)
+        print("Error: git fetch failed. Check network/proxy and retry.", file=sys.stderr)
+        return 1
+
+    head = subprocess.run(
+        ["git", "-C", str(local_dir), "rev-parse", "HEAD"],
+        capture_output=True, text=True,
+    )
+    target = subprocess.run(
+        ["git", "-C", str(local_dir), "rev-parse", f"{tag}^{{commit}}"],
+        capture_output=True, text=True,
+    )
+    if head.returncode == 0 and target.returncode == 0 and head.stdout.strip() == target.stdout.strip():
+        print(f"Already up to date (local, pinned to {tag}): {local_dir}")
+        return 0
+
+    co = subprocess.run(
+        ["git", "-C", str(local_dir), "checkout", "--quiet", tag],
+        capture_output=True, text=True,
+    )
+    if co.returncode != 0:
+        if co.stderr:
+            print(co.stderr.strip(), file=sys.stderr)
+        print(f"Error: git checkout {tag} failed.", file=sys.stderr)
+        return 1
+    print(f"Updated (local) to {tag}: {local_dir}")
+    return 0
+
+
 def _warn_version_mismatch(pkg_dir):
     """Print a warning if plugin and package versions are misaligned."""
     try:
@@ -266,27 +333,12 @@ def cmd_setup(root, args, agent_root=None):
         pkg_json = local_dir / "package.json"
         if pkg_json.is_file():
             if PACKAGE_NAME in deps and deps[PACKAGE_NAME] == dep_value_local:
-                # Always check git for updates (local clones are cheap to pull)
-                print(f"Checking for updates: {local_dir}")
-                try:
-                    result = subprocess.run(
-                        ["git", "-C", str(local_dir), "pull", "--ff-only"],
-                        capture_output=True, text=True,
-                    )
-                    if result.returncode != 0:
-                        if result.stderr:
-                            print(result.stderr.strip(), file=sys.stderr)
-                        print("Error: git pull failed. The local clone may have diverged; "
-                              "delete it and re-run setup.", file=sys.stderr)
-                        return 1
-                    stdout = result.stdout.strip()
-                    if "Already up to date" in stdout or "Already up-to-date" in stdout:
-                        print(f"Already up to date (local): {local_dir}")
-                    else:
-                        print(f"Updated (local): {local_dir}")
-                except FileNotFoundError:
-                    print("Error: git is not installed or not on PATH.", file=sys.stderr)
-                    return 1
+                if target_tag:
+                    rc = _checkout_tag_in_local(local_dir, target_tag)
+                else:
+                    rc = _pull_local(local_dir)
+                if rc != 0:
+                    return rc
                 _warn_version_mismatch(local_dir)
                 return 0
             # Directory exists but manifest points elsewhere (e.g. git) — update below
