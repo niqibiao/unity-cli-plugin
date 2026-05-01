@@ -302,9 +302,18 @@ def cmd_setup(root, args, agent_root=None):
 
     raw_source = args.source or DEFAULT_SOURCE
     method = args.method or "git"
-    effective_source, target_tag, pin_msg = _resolve_pin(raw_source, getattr(args, "no_pin", False))
-    if pin_msg:
-        print(pin_msg)
+
+    # Resolve the pin lazily: paths that early-return (e.g. "already installed"
+    # without --update) skip the network call and avoid printing a misleading
+    # "Pinning to ..." line for an action that won't happen.
+    _pin_cache = {"done": False, "eff": raw_source, "tag": None}
+    def _get_pin():
+        if not _pin_cache["done"]:
+            eff, tag, msg = _resolve_pin(raw_source, getattr(args, "no_pin", False))
+            if msg:
+                print(msg)
+            _pin_cache.update(eff=eff, tag=tag, done=True)
+        return _pin_cache["eff"], _pin_cache["tag"]
 
     if method == "local":
         existing = deps.get(PACKAGE_NAME, "")
@@ -333,6 +342,7 @@ def cmd_setup(root, args, agent_root=None):
         pkg_json = local_dir / "package.json"
         if pkg_json.is_file():
             if PACKAGE_NAME in deps and deps[PACKAGE_NAME] == dep_value_local:
+                _, target_tag = _get_pin()
                 if target_tag:
                     rc = _checkout_tag_in_local(local_dir, target_tag)
                 else:
@@ -348,6 +358,7 @@ def cmd_setup(root, args, agent_root=None):
                 import shutil
                 shutil.rmtree(local_dir)
             local_dir.parent.mkdir(parents=True, exist_ok=True)
+            _, target_tag = _get_pin()
             clone_url = raw_source.split("#", 1)[0]
             rc = _clone_with_progress(clone_url, local_dir, tag=target_tag)
             if rc != 0:
@@ -369,6 +380,7 @@ def cmd_setup(root, args, agent_root=None):
             # --update: remove and re-add to force Unity re-resolve
             print(f"Forcing re-resolve of {PACKAGE_NAME} ...")
             del deps[PACKAGE_NAME]
+        effective_source, _ = _get_pin()
         dep_value = effective_source
 
     deps[PACKAGE_NAME] = dep_value
