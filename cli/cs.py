@@ -222,8 +222,11 @@ def cmd_setup(root, args, agent_root=None):
     data = json.loads(manifest.read_text("utf-8"))
     deps = data.setdefault("dependencies", {})
 
-    source = args.source or DEFAULT_SOURCE
+    raw_source = args.source or DEFAULT_SOURCE
     method = args.method or "git"
+    effective_source, target_tag, pin_msg = _resolve_pin(raw_source, getattr(args, "no_pin", False))
+    if pin_msg:
+        print(pin_msg)
 
     if method == "local":
         existing = deps.get(PACKAGE_NAME, "")
@@ -282,7 +285,7 @@ def cmd_setup(root, args, agent_root=None):
                 import shutil
                 shutil.rmtree(local_dir)
             local_dir.parent.mkdir(parents=True, exist_ok=True)
-            rc = _clone_with_progress(source, local_dir)
+            rc = _clone_with_progress(raw_source, local_dir)
             if rc != 0:
                 return 1
 
@@ -302,7 +305,7 @@ def cmd_setup(root, args, agent_root=None):
             # --update: remove and re-add to force Unity re-resolve
             print(f"Forcing re-resolve of {PACKAGE_NAME} ...")
             del deps[PACKAGE_NAME]
-        dep_value = source
+        dep_value = effective_source
 
     deps[PACKAGE_NAME] = dep_value
     manifest.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", "utf-8")
