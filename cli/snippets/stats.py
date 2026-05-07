@@ -4,7 +4,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-DATA_DIR_NAME = ".unity-cli"
+from cli.snippets import DATA_DIR_NAME
+
 AUDIT_FILE = "snippets-audit.json"
 STATS_FILE = "snippets-stats.json"
 
@@ -46,6 +47,8 @@ def save_audit(project_root, data):
 def init_audit_entry(project_root, snippet_id, *, verified, when=None):
     when = when or _now()
     audit = load_audit(project_root)
+    if snippet_id in audit["snippets"]:
+        raise KeyError(f"audit entry already exists: {snippet_id!r}")
     audit["snippets"][snippet_id] = {
         "created_at": when,
         "verified_at": when if verified else None,
@@ -81,6 +84,8 @@ def save_stats(project_root, data):
 
 def init_stats_entry(project_root, snippet_id, *, created_at):
     stats = load_stats(project_root)
+    if snippet_id in stats["snippets"]:
+        raise KeyError(f"stats entry already exists: {snippet_id!r}")
     stats["snippets"][snippet_id] = {
         "successes": 0,
         "failures": 0,

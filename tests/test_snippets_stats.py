@@ -49,6 +49,15 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(e["supersedes"], "scene.y")
         self.assertEqual(e["deprecated_at"], "2026-06-01T00:00:00Z")
 
+    def test_init_audit_entry_rejects_duplicate(self):
+        init_audit_entry(self.root, "scene.x", verified=True, when="2026-05-07T00:00:00Z")
+        with self.assertRaises(KeyError):
+            init_audit_entry(self.root, "scene.x", verified=True, when="2026-05-08T00:00:00Z")
+
+    def test_mark_deprecated_missing_raises(self):
+        with self.assertRaises(KeyError):
+            mark_deprecated(self.root, "no.such.snippet", reason="x")
+
 
 class StatsTests(unittest.TestCase):
     def setUp(self):
@@ -88,6 +97,11 @@ class StatsTests(unittest.TestCase):
         self.assertEqual(e["consecutive_failures"], 2)
         self.assertEqual(e["first_failure_in_streak"], "2026-05-08T00:00:00Z")
         self.assertEqual(e["last_failure"], "2026-05-15T00:00:00Z")
+
+    def test_init_stats_entry_rejects_duplicate(self):
+        init_stats_entry(self.root, "scene.x", created_at="2026-05-07T00:00:00Z")
+        with self.assertRaises(KeyError):
+            init_stats_entry(self.root, "scene.x", created_at="2026-05-08T00:00:00Z")
 
 
 if __name__ == "__main__":

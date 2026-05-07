@@ -204,7 +204,8 @@ def parse_snippet_file(text):
     return snip
 
 
-DATA_DIR_NAME = ".unity-cli"
+from cli.snippets import DATA_DIR_NAME
+
 SNIPPETS_SUBDIR = "snippets~"
 
 
