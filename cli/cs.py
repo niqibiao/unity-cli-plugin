@@ -1422,6 +1422,97 @@ def cmd_snippets_deprecate(root, args):
     return 0
 
 
+def cmd_snippets_prune(root, args):
+    from cli.snippets.store import (snippet_path, list_snippet_ids)
+    from cli.snippets.stats import (load_audit, save_audit, load_stats,
+                                    save_stats, classify_state, mark_deprecated, _now)
+    from datetime import datetime, timezone
+
+    audit = load_audit(root)
+    stats = load_stats(root)
+
+    actions = {"deprecate": [], "remove": []}
+    now_iso = _now()
+
+    for sid in list_snippet_ids(root):
+        a = audit["snippets"].get(sid, {})
+        if a.get("deprecated"):
+            continue
+        entry = stats["snippets"].get(sid, {})
+        state = classify_state(entry, now_iso)
+        if state == "broken":
+            actions["deprecate"].append((sid, state))
+        elif state == "cold" and args.cold:
+            actions["deprecate"].append((sid, state))
+
+    if args.remove:
+        now = datetime.now(timezone.utc)
+        for sid, a in audit["snippets"].items():
+            if not a.get("deprecated"):
+                continue
+            dep_at = a.get("deprecated_at")
+            if not dep_at:
+                continue
+            d = datetime.strptime(dep_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            if (now - d).days >= args.max_age_days:
+                actions["remove"].append(sid)
+
+    if args.dry_run:
+        result = {
+            "ok": True, "exitCode": 0,
+            "summary": (f"plan: deprecate {len(actions['deprecate'])}, "
+                        f"remove {len(actions['remove'])}"),
+            "data": {
+                "deprecate": [sid for sid, _ in actions["deprecate"]],
+                "remove": actions["remove"],
+            },
+        }
+        if args.as_json:
+            json.dump(result, sys.stdout, ensure_ascii=False, indent=2)
+            print()
+        else:
+            print(result["summary"])
+            for sid, st in actions["deprecate"]:
+                print(f"  deprecate ({st}): {sid}")
+            for sid in actions["remove"]:
+                print(f"  remove:    {sid}")
+        return 0
+
+    for sid, state in actions["deprecate"]:
+        entry = stats["snippets"].get(sid, {})
+        if state == "broken":
+            reason = (f"{entry.get('consecutive_failures')} consecutive failures "
+                      f"between {entry.get('first_failure_in_streak')} "
+                      f"and {entry.get('last_failure')}")
+        else:
+            reason = "cold (low usage)"
+        mark_deprecated(root, sid, reason=reason)
+
+    for sid in actions["remove"]:
+        p = snippet_path(root, sid)
+        try:
+            p.unlink()
+        except OSError:
+            pass
+        audit["snippets"].pop(sid, None)
+        stats["snippets"].pop(sid, None)
+    if actions["remove"]:
+        save_audit(root, audit)
+        save_stats(root, stats)
+
+    summary = (f"deprecated {len(actions['deprecate'])}, "
+               f"removed {len(actions['remove'])}")
+    _print_envelope(
+        {"ok": True, "exitCode": 0, "summary": summary,
+         "data": {
+             "deprecate": [sid for sid, _ in actions["deprecate"]],
+             "remove": actions["remove"],
+         }},
+        args.as_json,
+    )
+    return 0
+
+
 def cmd_snippets_show(root, args):
     from cli.snippets.store import read_snippet_file, parse_snippet_file
     from cli.snippets.stats import load_audit, load_stats
@@ -1607,6 +1698,15 @@ def main():
     sp_sn_dep.add_argument("--supersede", default=None,
                            help="Id of a snippet that replaces this one")
 
+    sp_sn_prune = sn_sub.add_parser("prune", parents=[shared],
+                                     help="Clean up the snippet library")
+    sp_sn_prune.add_argument("--cold", action="store_true",
+                             help="Also mark cold snippets as deprecated (opt-in)")
+    sp_sn_prune.add_argument("--remove", action="store_true",
+                             help="Hard-delete deprecated snippets older than --max-age-days")
+    sp_sn_prune.add_argument("--max-age-days", type=int, default=30, dest="max_age_days")
+    sp_sn_prune.add_argument("--dry-run", dest="dry_run", action="store_true")
+
     args = p.parse_args()
 
     # Apply defaults for any shared arg the user didn't pass (SUPPRESS leaves
@@ -1697,6 +1797,8 @@ def main():
             sys.exit(cmd_snippets_update(root, args, agent_root))
         elif args.snippets_cmd == "deprecate":
             sys.exit(cmd_snippets_deprecate(root, args))
+        elif args.snippets_cmd == "prune":
+            sys.exit(cmd_snippets_prune(root, args))
         else:
             sp_sn.print_help()
             sys.exit(1)
