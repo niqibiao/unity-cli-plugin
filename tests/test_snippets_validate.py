@@ -75,5 +75,23 @@ class ValidateReadOnlyTests(unittest.TestCase):
         self.assertEqual(calls, [])
 
 
+class MutatesRoutingTests(unittest.TestCase):
+    def test_mutates_with_no_validate_skips_runner(self):
+        snip = dict(SAMPLE_SNIPPET, safety="mutates")
+        calls = []
+        def fake_runner(code):
+            calls.append(code)
+            return _ok_response()
+        validate_snippet(snip, fake_runner, no_validate=True)
+        self.assertEqual(calls, [])
+
+    def test_mutates_no_no_validate_raises_before_runner(self):
+        snip = dict(SAMPLE_SNIPPET, safety="mutates")
+        def fake_runner(code):
+            self.fail("runner must not be called for mutates without --no-validate")
+        with self.assertRaises(ValidationError):
+            validate_snippet(snip, fake_runner)
+
+
 if __name__ == "__main__":
     unittest.main()
