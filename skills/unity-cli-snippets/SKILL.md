@@ -45,7 +45,7 @@ Full set: `list / show / search / use / add / update / deprecate / prune / stats
 
 ## Snippet Anatomy
 
-```markdown
+````markdown
 ---
 id: scene.find_active_in_layer
 summary: Find active GameObjects in a specific layer
@@ -67,7 +67,7 @@ static List<string> Run(string layerName) {
         .Select(g => g.name).ToList();
 }
 ```
-```
+````
 
 - Body must define one `static Run(...)` method matching `args` order.
 - Helpers go alongside `Run` as `static` members. No local functions.
