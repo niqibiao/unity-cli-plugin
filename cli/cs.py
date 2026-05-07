@@ -1171,6 +1171,54 @@ def cmd_snippets_list(root, args):
     return 0
 
 
+def cmd_snippets_search(root, args):
+    from cli.snippets.store import (list_snippet_ids, read_snippet_file,
+                                    parse_snippet_file)
+    from cli.snippets.stats import load_audit
+
+    audit = load_audit(root)
+    q = args.query.lower()
+    q_terms = [t for t in q.split() if t]
+    hits = []
+    for sid in list_snippet_ids(root):
+        a = audit["snippets"].get(sid, {})
+        if a.get("deprecated"):
+            continue
+        text = read_snippet_file(root, sid) or ""
+        try:
+            snip = parse_snippet_file(text)
+        except Exception:
+            continue
+        haystack = f"{sid} {snip['summary']}".lower()
+        score = sum(1 for t in q_terms if t in haystack)
+        if score > 0:
+            hits.append((score, sid, snip))
+    hits.sort(key=lambda x: (-x[0], x[1]))
+    top = hits[: args.top]
+    rows = []
+    for score, sid, snip in top:
+        args_summary = ", ".join(
+            f"{a['name']}:{a['type']}" for a in snip["args"]
+        )
+        rows.append({
+            "id": sid, "summary": snip["summary"],
+            "args": args_summary, "score": score,
+        })
+    result = {
+        "ok": True, "exitCode": 0,
+        "summary": f"{len(rows)} hit(s) for {args.query!r}",
+        "data": {"results": rows},
+    }
+    if args.as_json:
+        json.dump(result, sys.stdout, ensure_ascii=False, indent=2)
+        print()
+    else:
+        print(result["summary"])
+        for r in rows:
+            print(f"  {r['id']}({r['args']}) — {r['summary']}")
+    return 0
+
+
 def cmd_snippets_show(root, args):
     from cli.snippets.store import read_snippet_file, parse_snippet_file
     from cli.snippets.stats import load_audit, load_stats
@@ -1333,6 +1381,11 @@ def main():
                                    help="Show a snippet body and metadata")
     sp_sn_show.add_argument("snippet_id")
 
+    sp_sn_search = sn_sub.add_parser("search", parents=[shared],
+                                      help="Search snippet library")
+    sp_sn_search.add_argument("query", help="Free-text query")
+    sp_sn_search.add_argument("--top", type=int, default=5)
+
     args = p.parse_args()
 
     # Apply defaults for any shared arg the user didn't pass (SUPPRESS leaves
@@ -1417,6 +1470,8 @@ def main():
             sys.exit(cmd_snippets_list(root, args))
         elif args.snippets_cmd == "show":
             sys.exit(cmd_snippets_show(root, args))
+        elif args.snippets_cmd == "search":
+            sys.exit(cmd_snippets_search(root, args))
         else:
             sp_sn.print_help()
             sys.exit(1)
