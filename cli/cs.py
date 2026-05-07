@@ -1219,6 +1219,149 @@ def cmd_snippets_search(root, args):
     return 0
 
 
+def cmd_snippets_update(root, args, agent_root):
+    from cli.snippets.store import (read_snippet_file, parse_snippet_file,
+                                    write_snippet_file, SnippetParseError)
+    from cli.snippets.validate import validate_snippet, ValidationError
+    from cli.snippets.stats import load_audit, save_audit, _now
+    from cli.core_bridge import find_package_dir
+
+    if not args.file and not args.set_field:
+        _print_envelope(
+            {"ok": False, "exitCode": 1, "summary": "must pass --file or --set"},
+            args.as_json,
+        )
+        return 1
+
+    existing = read_snippet_file(root, args.snippet_id)
+    if existing is None:
+        _print_envelope(
+            {"ok": False, "exitCode": 1,
+             "summary": f"snippet not found: {args.snippet_id}"},
+            args.as_json,
+        )
+        return 1
+
+    if args.file:
+        try:
+            new_text = Path(args.file).read_text(encoding="utf-8-sig")
+        except OSError as e:
+            _print_envelope(
+                {"ok": False, "exitCode": 1, "summary": f"cannot read --file: {e}"},
+                args.as_json,
+            )
+            return 1
+        try:
+            new_snip = parse_snippet_file(new_text)
+        except SnippetParseError as e:
+            _print_envelope(
+                {"ok": False, "exitCode": 1, "summary": f"parse error: {e}"},
+                args.as_json,
+            )
+            return 1
+        if new_snip["id"] != args.snippet_id:
+            _print_envelope(
+                {"ok": False, "exitCode": 1,
+                 "summary": "id mismatch between --file and CLI argument"},
+                args.as_json,
+            )
+            return 1
+
+        pkg_dir = find_package_dir(root, agent_root) if not args.no_validate else None
+        if pkg_dir is not None:
+            session = _new_session(root, args, pkg_dir)
+            code_runner = session.exec
+        else:
+            code_runner = None
+        try:
+            validate_snippet(new_snip, code_runner, no_validate=args.no_validate)
+        except ValidationError as e:
+            _print_envelope(
+                {"ok": False, "exitCode": 1, "summary": f"validation failed: {e}"},
+                args.as_json,
+            )
+            return 1
+        write_snippet_file(root, args.snippet_id, new_text)
+
+        audit = load_audit(root)
+        e = audit["snippets"][args.snippet_id]
+        if not args.no_validate:
+            e["verified_at"] = _now()
+            e["unverified"] = False
+        else:
+            e["unverified"] = True
+        save_audit(root, audit)
+
+        _print_envelope(
+            {"ok": True, "exitCode": 0,
+             "summary": f"updated {args.snippet_id}"
+                        + (" (unverified)" if args.no_validate else "")},
+            args.as_json,
+        )
+        return 0
+
+    snip = parse_snippet_file(existing)
+    new_summary = snip["summary"]
+    arg_desc_updates = {}
+    for kv in args.set_field:
+        if "=" not in kv:
+            _print_envelope(
+                {"ok": False, "exitCode": 1,
+                 "summary": f"--set expects key=value, got {kv!r}"},
+                args.as_json,
+            )
+            return 1
+        k, _, v = kv.partition("=")
+        k = k.strip()
+        v = v.strip()
+        if k == "summary":
+            new_summary = v
+        elif k.startswith("arg.") and k.endswith(".description"):
+            argname = k[4:-len(".description")]
+            if not any(a["name"] == argname for a in snip["args"]):
+                _print_envelope(
+                    {"ok": False, "exitCode": 1,
+                     "summary": f"no such arg: {argname!r}"},
+                    args.as_json,
+                )
+                return 1
+            arg_desc_updates[argname] = v
+        else:
+            _print_envelope(
+                {"ok": False, "exitCode": 1,
+                 "summary": f"--set field {k!r} not allowed; only `summary` and "
+                            f"`arg.<name>.description` can be updated without --file"},
+                args.as_json,
+            )
+            return 1
+
+    new_text = existing
+    if new_summary != snip["summary"]:
+        new_text = re.sub(
+            r"(^summary:\s*).+$", rf"\g<1>{new_summary}",
+            new_text, count=1, flags=re.MULTILINE,
+        )
+    for argname, desc in arg_desc_updates.items():
+        pattern = re.compile(
+            rf"(- name: {re.escape(argname)}\n(?:    [^\n]+\n)*?)"
+            rf"(    description:[^\n]*\n)?",
+            re.MULTILINE,
+        )
+        def _repl(m):
+            head = m.group(1)
+            new_line = f"    description: {desc}\n"
+            return head + new_line
+        new_text = pattern.sub(_repl, new_text, count=1)
+
+    write_snippet_file(root, args.snippet_id, new_text)
+    _print_envelope(
+        {"ok": True, "exitCode": 0,
+         "summary": f"updated {args.snippet_id} metadata"},
+        args.as_json,
+    )
+    return 0
+
+
 def cmd_snippets_show(root, args):
     from cli.snippets.store import read_snippet_file, parse_snippet_file
     from cli.snippets.stats import load_audit, load_stats
@@ -1386,6 +1529,17 @@ def main():
     sp_sn_search.add_argument("query", help="Free-text query")
     sp_sn_search.add_argument("--top", type=int, default=5)
 
+    sp_sn_update = sn_sub.add_parser("update", parents=[shared],
+                                      help="Update an existing snippet")
+    sp_sn_update.add_argument("snippet_id")
+    sp_sn_update.add_argument("--file", "-f", dest="file", default=None,
+                              help="Replace the snippet body (re-runs validation gate)")
+    sp_sn_update.add_argument("--set", dest="set_field", action="append", default=[],
+                              metavar="key=value",
+                              help="Update a metadata-only field (summary or arg description). "
+                                   "Repeat for multiple. Cannot change args/example/safety/expected/body.")
+    sp_sn_update.add_argument("--no-validate", dest="no_validate", action="store_true")
+
     args = p.parse_args()
 
     # Apply defaults for any shared arg the user didn't pass (SUPPRESS leaves
@@ -1472,6 +1626,8 @@ def main():
             sys.exit(cmd_snippets_show(root, args))
         elif args.snippets_cmd == "search":
             sys.exit(cmd_snippets_search(root, args))
+        elif args.snippets_cmd == "update":
+            sys.exit(cmd_snippets_update(root, args, agent_root))
         else:
             sp_sn.print_help()
             sys.exit(1)
