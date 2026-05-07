@@ -116,6 +116,17 @@ def _slim_result(result):
     return out
 
 
+def _print_envelope(result, as_json):
+    if as_json:
+        json.dump(result, sys.stdout, ensure_ascii=False, indent=2)
+        print()
+    else:
+        if result.get("ok"):
+            print(result.get("summary", "OK"))
+        else:
+            print(f"Error: {result.get('summary', 'failed')}", file=sys.stderr)
+
+
 # ── Pre-setup commands (pure stdlib, no core needed) ────────────────────
 
 _PROGRESS_RE = re.compile(r"^(.+?):\s+(\d+)%\s+\((\d+)/(\d+)\)")
@@ -874,6 +885,107 @@ def cmd_catalog_list(root, args):
     return 0
 
 
+def cmd_snippets_add(root, args, agent_root):
+    from cli.snippets.store import (parse_snippet_file, write_snippet_file,
+                                    SnippetParseError)
+    from cli.snippets.validate import validate_snippet, ValidationError
+    from cli.snippets.stats import init_audit_entry, init_stats_entry, load_audit
+    from cli.core_bridge import find_package_dir
+
+    try:
+        text = Path(args.file).read_text(encoding="utf-8-sig")
+    except OSError as e:
+        _print_envelope(
+            {"ok": False, "exitCode": 1, "summary": f"cannot read --file: {e}"},
+            args.as_json,
+        )
+        return 1
+
+    try:
+        snip = parse_snippet_file(text)
+    except SnippetParseError as e:
+        _print_envelope(
+            {"ok": False, "exitCode": 1, "summary": f"parse error: {e}"},
+            args.as_json,
+        )
+        return 1
+
+    if snip["id"] != args.snippet_id:
+        _print_envelope(
+            {"ok": False, "exitCode": 1,
+             "summary": f"id mismatch: file declares {snip['id']!r}, "
+                        f"CLI got {args.snippet_id!r}"},
+            args.as_json,
+        )
+        return 1
+
+    audit = load_audit(root)
+    if args.snippet_id in audit["snippets"]:
+        _print_envelope(
+            {"ok": False, "exitCode": 1,
+             "summary": f"snippet {args.snippet_id!r} already exists; "
+                        f"use `cs snippets update`"},
+            args.as_json,
+        )
+        return 1
+
+    pkg_dir = find_package_dir(root, agent_root) if not args.no_validate else None
+    if pkg_dir is None and not args.no_validate:
+        _print_envelope(
+            {"ok": False, "exitCode": 1,
+             "summary": "package not found and --no-validate not set"},
+            args.as_json,
+        )
+        return 1
+
+    code_runner = None
+    if pkg_dir is not None:
+        session = _new_session(root, args, pkg_dir)
+        code_runner = session.exec
+
+    try:
+        validate_snippet(
+            snip,
+            code_runner or (lambda code: {"ok": False, "summary": "no runner"}),
+            no_validate=args.no_validate,
+        )
+    except ValidationError as e:
+        _print_envelope(
+            {"ok": False, "exitCode": 1, "summary": f"validation failed: {e}"},
+            args.as_json,
+        )
+        return 1
+
+    write_snippet_file(root, args.snippet_id, text)
+    init_audit_entry(root, args.snippet_id, verified=not args.no_validate)
+    audit_after = load_audit(root)
+    created_at = audit_after["snippets"][args.snippet_id]["created_at"]
+    init_stats_entry(root, args.snippet_id, created_at=created_at)
+
+    _print_envelope(
+        {"ok": True, "exitCode": 0,
+         "summary": f"registered {args.snippet_id}"
+                    + (" (unverified)" if args.no_validate else "")},
+        args.as_json,
+    )
+    return 0
+
+
+def cmd_snippets_use(root, args, agent_root):
+    print("not yet implemented", file=sys.stderr)
+    return 2
+
+
+def cmd_snippets_list(root, args):
+    print("not yet implemented", file=sys.stderr)
+    return 2
+
+
+def cmd_snippets_show(root, args):
+    print("not yet implemented", file=sys.stderr)
+    return 2
+
+
 # ── Main ────────────────────────────────────────────────────────────────
 
 def main():
@@ -955,6 +1067,33 @@ def main():
     sp_cat_list.add_argument("--catalog-path", dest="catalog_path", default=None,
                              help="Override the cached catalog file path for this read")
 
+    sp_sn = sub.add_parser("snippets", parents=[shared], help="Reusable C# snippet library")
+    sn_sub = sp_sn.add_subparsers(dest="snippets_cmd")
+
+    sp_sn_add = sn_sub.add_parser("add", parents=[shared], help="Validate and register a snippet")
+    sp_sn_add.add_argument("snippet_id", help="Snippet id (dotted, e.g. scene.find_in_layer)")
+    sp_sn_add.add_argument("--file", "-f", dest="file", required=True,
+                           help="Path to the snippet markdown file")
+    sp_sn_add.add_argument("--no-validate", dest="no_validate", action="store_true",
+                           help="Skip validation gate; register as unverified (required for mutates)")
+
+    sp_sn_use = sn_sub.add_parser("use", parents=[shared], help="Run a snippet")
+    sp_sn_use.add_argument("snippet_id")
+    sp_sn_use.add_argument("--args", dest="snippet_args", default=None,
+                           help="JSON object of arg values")
+    sp_sn_use.add_argument("--dry-run", dest="dry_run", action="store_true",
+                           help="Print the wrapped submission without executing")
+
+    sp_sn_list = sn_sub.add_parser("list", parents=[shared], help="List snippets")
+    sp_sn_list.add_argument("--include-deprecated", dest="include_deprecated",
+                            action="store_true")
+    sp_sn_list.add_argument("--safety", choices=["read-only", "mutates"], default=None)
+    sp_sn_list.add_argument("--sort", choices=["hot", "cold", "recent"], default=None)
+
+    sp_sn_show = sn_sub.add_parser("show", parents=[shared],
+                                    help="Show a snippet body and metadata")
+    sp_sn_show.add_argument("snippet_id")
+
     args = p.parse_args()
 
     # Apply defaults for any shared arg the user didn't pass (SUPPRESS leaves
@@ -1026,6 +1165,21 @@ def main():
             sys.exit(cmd_catalog_list(root, args))
         else:
             sp_cat.print_help()
+            sys.exit(1)
+    if args.cmd == "snippets":
+        if root is None:
+            print("Error: no Unity project found.", file=sys.stderr)
+            sys.exit(1)
+        if args.snippets_cmd == "add":
+            sys.exit(cmd_snippets_add(root, args, agent_root))
+        elif args.snippets_cmd == "use":
+            sys.exit(cmd_snippets_use(root, args, agent_root))
+        elif args.snippets_cmd == "list":
+            sys.exit(cmd_snippets_list(root, args))
+        elif args.snippets_cmd == "show":
+            sys.exit(cmd_snippets_show(root, args))
+        else:
+            sp_sn.print_help()
             sys.exit(1)
     if not args.cmd:
         p.print_help()
