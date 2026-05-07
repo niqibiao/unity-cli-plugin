@@ -169,6 +169,25 @@ class StorageIOTests(unittest.TestCase):
     def test_list_ids_empty_when_dir_missing(self):
         self.assertEqual(list_snippet_ids(self.root), [])
 
+    def test_invalid_id_rejected_in_path(self):
+        from cli.snippets.store import snippet_path
+        with self.assertRaises(ValueError):
+            snippet_path(self.root, "../../../etc/passwd")
+
+    def test_invalid_id_rejected_in_write(self):
+        with self.assertRaises(ValueError):
+            write_snippet_file(self.root, "BadID", "content")
+
+    def test_read_strips_bom(self):
+        bom = "﻿"
+        write_snippet_file(self.root, "scene.x", bom + SAMPLE.replace("scene.find_active_in_layer", "scene.x"))
+        # write_text doesn't write BOM, so re-write with BOM directly:
+        from cli.snippets.store import snippet_path as _sp
+        p = _sp(self.root, "scene.x")
+        p.write_text(bom + SAMPLE.replace("scene.find_active_in_layer", "scene.x"), encoding="utf-8")
+        text = read_snippet_file(self.root, "scene.x")
+        self.assertFalse(text.startswith("﻿"))
+
 
 if __name__ == "__main__":
     unittest.main()

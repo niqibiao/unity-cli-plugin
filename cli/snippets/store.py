@@ -1,6 +1,7 @@
 """Snippet file IO: frontmatter parsing, on-disk layout."""
 
 import json
+from pathlib import Path
 import re
 
 ID_RE = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
@@ -203,8 +204,6 @@ def parse_snippet_file(text):
     return snip
 
 
-from pathlib import Path
-
 DATA_DIR_NAME = ".unity-cli"
 SNIPPETS_SUBDIR = "snippets~"
 
@@ -214,6 +213,8 @@ def snippets_dir(project_root):
 
 
 def snippet_path(project_root, snippet_id):
+    if not ID_RE.match(snippet_id):
+        raise ValueError(f"invalid snippet id: {snippet_id!r}")
     return snippets_dir(project_root) / f"{snippet_id}.md"
 
 
@@ -227,7 +228,7 @@ def read_snippet_file(project_root, snippet_id):
     p = snippet_path(project_root, snippet_id)
     if not p.is_file():
         return None
-    return p.read_text(encoding="utf-8")
+    return p.read_text(encoding="utf-8-sig")
 
 
 def list_snippet_ids(project_root):
