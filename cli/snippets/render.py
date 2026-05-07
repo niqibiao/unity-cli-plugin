@@ -95,7 +95,7 @@ def render_literal(type_name, value):
     raise ValueError(f"unsupported snippet arg type: {type_name!r}")
 
 
-_USING_RE = re.compile(r"^\s*using\s+[^;]+;\s*$", re.MULTILINE)
+_USING_RE = re.compile(r"^using\s+[^;]+;\s*$", re.MULTILINE)
 
 
 def _split_usings(body):
@@ -136,8 +136,7 @@ def render_submission(snippet_id, body, args_schema, arg_values):
     usings, body_no_usings = _split_usings(body)
     cls = _wrapper_class_name(snippet_id, body)
     parts = []
-    for u in usings:
-        parts.append(u)
+    parts.extend(usings)
     if usings:
         parts.append("")
     parts.append(f"static class {cls} {{")

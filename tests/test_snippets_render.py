@@ -173,6 +173,18 @@ class RenderSubmissionTests(unittest.TestCase):
                 arg_values={},
             )
 
+    def test_indented_using_var_not_hoisted(self):
+        body = '''static int Run() {
+    using var r = new System.IO.StringReader("hi");
+    return r.Read();
+}'''
+        text = render_submission(
+            snippet_id="x.y", body=body,
+            args_schema=[], arg_values={},
+        )
+        self.assertNotIn("System.IO.StringReader", text.splitlines()[0])
+        self.assertIn("using var r = new System.IO.StringReader", text)
+
 
 def _extract_class_name(text):
     import re
