@@ -1,0 +1,180 @@
+"""Snippet file IO: frontmatter parsing, on-disk layout."""
+
+import json
+import re
+
+ID_RE = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
+VALID_SAFETY = {"read-only", "mutates"}
+VALID_TYPES = {
+    "string", "int", "float", "bool",
+    "vector2", "vector3", "vector4", "color",
+    "string[]", "int[]", "float[]",
+}
+
+_FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n(.*)$", re.DOTALL)
+_CODE_BLOCK_RE = re.compile(r"```csharp\n(.*?)\n```", re.DOTALL)
+_RUN_METHOD_RE = re.compile(r"\bstatic\s+[\w<>\[\],\s\.]+?\s+Run\s*\(")
+
+
+class SnippetParseError(ValueError):
+    pass
+
+
+def _parse_yaml_subset(text):
+    """Parse the limited YAML we accept in frontmatter.
+
+    Supports:
+      - `key: scalar`
+      - `key: [..]` / `key: {..}` (parsed as JSON)
+      - `key:` followed by indented `- name: ...` blocks (lists of dicts)
+      - `key:` followed by indented `subkey: value` blocks (mappings)
+    """
+    out = {}
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if not line.strip() or line.strip().startswith("#"):
+            i += 1
+            continue
+        if not line.lstrip().startswith("- "):
+            if ":" not in line:
+                raise SnippetParseError(f"malformed frontmatter line: {line!r}")
+            key, _, rest = line.partition(":")
+            key = key.strip()
+            rest = rest.strip()
+            if not rest:
+                block_lines = []
+                i += 1
+                while i < len(lines) and (lines[i].startswith("  ") or not lines[i].strip()):
+                    block_lines.append(lines[i])
+                    i += 1
+                out[key] = _parse_block(block_lines)
+                continue
+            out[key] = _parse_scalar_or_inline(rest)
+        else:
+            raise SnippetParseError(f"top-level list not allowed: {line!r}")
+        i += 1
+    return out
+
+
+def _parse_block(block_lines):
+    stripped = [ln for ln in block_lines if ln.strip()]
+    if not stripped:
+        return {}
+    first = stripped[0].lstrip()
+    if first.startswith("- "):
+        return _parse_list_of_dicts(stripped)
+    return _parse_mapping_block(stripped)
+
+
+def _parse_list_of_dicts(lines):
+    items = []
+    current = None
+    for ln in lines:
+        s = ln.lstrip()
+        if s.startswith("- "):
+            if current is not None:
+                items.append(current)
+            current = {}
+            s = s[2:]
+            if ":" in s:
+                k, _, v = s.partition(":")
+                current[k.strip()] = _parse_scalar_or_inline(v.strip())
+        else:
+            if current is None:
+                raise SnippetParseError(f"unexpected indent: {ln!r}")
+            if ":" not in s:
+                raise SnippetParseError(f"malformed list item line: {ln!r}")
+            k, _, v = s.partition(":")
+            current[k.strip()] = _parse_scalar_or_inline(v.strip())
+    if current is not None:
+        items.append(current)
+    return items
+
+
+def _parse_mapping_block(lines):
+    out = {}
+    for ln in lines:
+        s = ln.strip()
+        if ":" not in s:
+            raise SnippetParseError(f"malformed mapping line: {ln!r}")
+        k, _, v = s.partition(":")
+        out[k.strip()] = _parse_scalar_or_inline(v.strip())
+    return out
+
+
+def _parse_scalar_or_inline(text):
+    if text == "":
+        return None
+    if text.startswith("[") or text.startswith("{") or text.startswith('"'):
+        return json.loads(text)
+    if text in ("true", "false"):
+        return text == "true"
+    if text in ("null", "~"):
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        pass
+    try:
+        return float(text)
+    except ValueError:
+        pass
+    return text
+
+
+def _validate(snip):
+    for required in ("id", "summary", "safety", "args", "example"):
+        if required not in snip:
+            raise SnippetParseError(f"frontmatter missing required field: {required}")
+    if not ID_RE.match(snip["id"]):
+        raise SnippetParseError(f"invalid id: {snip['id']!r}")
+    if snip["safety"] not in VALID_SAFETY:
+        raise SnippetParseError(
+            f"unknown safety class: {snip['safety']!r} "
+            f"(must be one of {sorted(VALID_SAFETY)})"
+        )
+    if not isinstance(snip["args"], list):
+        raise SnippetParseError("args must be a list")
+    seen_names = set()
+    for spec in snip["args"]:
+        for k in ("name", "type"):
+            if k not in spec:
+                raise SnippetParseError(f"arg missing {k}: {spec!r}")
+        if spec["type"] not in VALID_TYPES:
+            raise SnippetParseError(
+                f"arg {spec['name']!r}: unknown type {spec['type']!r}"
+            )
+        if spec["name"] in seen_names:
+            raise SnippetParseError(f"duplicate arg name: {spec['name']!r}")
+        seen_names.add(spec["name"])
+    if not isinstance(snip["example"], dict):
+        raise SnippetParseError("example must be a mapping")
+    for spec in snip["args"]:
+        if "default" not in spec and spec["name"] not in snip["example"]:
+            raise SnippetParseError(
+                f"example missing required arg: {spec['name']!r}"
+            )
+
+
+def parse_snippet_file(text):
+    """Parse a snippet markdown file's full contents.
+
+    Returns a dict with keys: id, summary, safety, args, example,
+    expected (optional), body. Raises SnippetParseError on any issue.
+    """
+    m = _FRONTMATTER_RE.match(text)
+    if not m:
+        raise SnippetParseError("missing frontmatter (--- ... ---) block")
+    fm_text, after = m.group(1), m.group(2)
+    snip = _parse_yaml_subset(fm_text)
+    _validate(snip)
+    code_match = _CODE_BLOCK_RE.search(after)
+    if not code_match:
+        raise SnippetParseError("missing ```csharp code block")
+    body = code_match.group(1).strip("\n")
+    if not _RUN_METHOD_RE.search(body):
+        raise SnippetParseError("snippet body must declare a `static Run(...)` method")
+    snip["body"] = body
+    return snip
