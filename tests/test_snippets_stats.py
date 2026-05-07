@@ -104,5 +104,71 @@ class StatsTests(unittest.TestCase):
             init_stats_entry(self.root, "scene.x", created_at="2026-05-08T00:00:00Z")
 
 
+from cli.snippets.stats import classify_state, AgingPolicy
+
+
+class ClassifyStateTests(unittest.TestCase):
+    def setUp(self):
+        self.policy = AgingPolicy(
+            cold_days=90, cold_min_uses=3,
+            broken_strikes=5, broken_min_span_days=7,
+            hot_min_uses=10, hot_max_recency_days=7,
+        )
+
+    def _entry(self, **overrides):
+        e = {
+            "successes": 0, "failures": 0,
+            "last_used": "2026-05-07T00:00:00Z",
+            "last_failure": None,
+            "first_failure_in_streak": None,
+            "consecutive_failures": 0,
+        }
+        e.update(overrides)
+        return e
+
+    def test_hot(self):
+        e = self._entry(successes=15, last_used="2026-05-06T00:00:00Z")
+        self.assertEqual(
+            classify_state(e, "2026-05-07T00:00:00Z", self.policy),
+            "hot",
+        )
+
+    def test_cold(self):
+        e = self._entry(successes=1, last_used="2026-01-01T00:00:00Z")
+        self.assertEqual(
+            classify_state(e, "2026-05-07T00:00:00Z", self.policy),
+            "cold",
+        )
+
+    def test_broken(self):
+        e = self._entry(
+            consecutive_failures=5,
+            first_failure_in_streak="2026-04-15T00:00:00Z",
+            last_failure="2026-04-25T00:00:00Z",
+        )
+        self.assertEqual(
+            classify_state(e, "2026-05-07T00:00:00Z", self.policy),
+            "broken",
+        )
+
+    def test_broken_requires_both_strikes_and_span(self):
+        e = self._entry(
+            consecutive_failures=5,
+            first_failure_in_streak="2026-05-01T00:00:00Z",
+            last_failure="2026-05-03T00:00:00Z",
+        )
+        self.assertNotEqual(
+            classify_state(e, "2026-05-07T00:00:00Z", self.policy),
+            "broken",
+        )
+
+    def test_neutral(self):
+        e = self._entry(successes=2, last_used="2026-05-07T00:00:00Z")
+        self.assertEqual(
+            classify_state(e, "2026-05-07T00:00:00Z", self.policy),
+            "neutral",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

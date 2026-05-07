@@ -127,3 +127,57 @@ def record_failure(project_root, snippet_id, *, when=None):
         e["first_failure_in_streak"] = when
     e["consecutive_failures"] += 1
     save_stats(project_root, stats)
+
+
+# ---------------------------------------------------------------------------
+# Aging policy classification
+# ---------------------------------------------------------------------------
+
+from collections import namedtuple
+
+AgingPolicy = namedtuple("AgingPolicy", [
+    "cold_days", "cold_min_uses",
+    "broken_strikes", "broken_min_span_days",
+    "hot_min_uses", "hot_max_recency_days",
+])
+
+DEFAULT_POLICY = AgingPolicy(
+    cold_days=90, cold_min_uses=3,
+    broken_strikes=5, broken_min_span_days=7,
+    hot_min_uses=10, hot_max_recency_days=7,
+)
+
+
+def _parse_iso(s):
+    if not s:
+        return None
+    return datetime.strptime(s, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+
+
+def _days_between(a, b):
+    da, db = _parse_iso(a), _parse_iso(b)
+    if da is None or db is None:
+        return 0
+    return abs((db - da).days)
+
+
+def classify_state(entry, now_iso, policy=DEFAULT_POLICY):
+    """Classify a stats entry as 'hot' / 'cold' / 'broken' / 'neutral'."""
+    cs = entry.get("consecutive_failures", 0)
+    if cs >= policy.broken_strikes:
+        span = _days_between(
+            entry.get("first_failure_in_streak"),
+            entry.get("last_failure"),
+        )
+        if span >= policy.broken_min_span_days:
+            return "broken"
+
+    last_used = entry.get("last_used")
+    successes = entry.get("successes", 0)
+    if last_used:
+        recency = _days_between(last_used, now_iso)
+        if successes >= policy.hot_min_uses and recency <= policy.hot_max_recency_days:
+            return "hot"
+        if recency >= policy.cold_days and successes < policy.cold_min_uses:
+            return "cold"
+    return "neutral"
