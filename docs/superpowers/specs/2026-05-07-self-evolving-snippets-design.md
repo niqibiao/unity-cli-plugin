@@ -2,7 +2,7 @@
 
 ## Overview
 
-A self-evolving library of reusable C# snippets executed through the existing Roslyn REPL (`cs exec`), discovered and evolved by the agent through dedicated CLI commands and a `unity-cli-snippets` skill. Snippets live as project-local data; they do not participate in Unity script compilation. The library grows from agent-distilled patterns gated by an automated validation step and tracked by usage frequency.
+A self-evolving library of reusable C# snippets executed through the existing Roslyn REPL (`cs exec`), discovered and evolved by the agent through dedicated CLI commands and a `unity-cli-snippets` skill. Snippets live as project-local data; they do not participate in Unity script compilation. The library grows from agent-distilled patterns gated by an automated validation step (smoke test) and tracked by usage frequency.
 
 This is a third tier alongside the existing built-in/custom command sources, deliberately independent of both.
 
@@ -11,7 +11,7 @@ This is a third tier alongside the existing built-in/custom command sources, del
 - **Project-local** storage in `.unity-cli/snippets~/` (committed by project repo). The trailing `~` is defensive: if the directory is ever copied into `Assets/`, Unity skips it.
 - **Zero compilation impact**: only `.md` files; no `.cs` files anywhere in the library; everything runs through `cs exec` (Roslyn).
 - **Skill is the operator's manual**, not the data. The plugin ships `skills/unity-cli-snippets/SKILL.md` containing rules; snippet bodies live with the project.
-- **Validation gate** + **usage frequency tracking** for evolution. No auto-append from exec history.
+- **Validation gate** (smoke test only — *not* a correctness oracle) + **usage frequency tracking** for evolution. No auto-append from exec history.
 - **Three independent command tiers**: `cs list-commands` (Unity-side compiled), `cs catalog` (cached subset), `cs snippets` (this proposal). They never read each other.
 
 ## Storage Layout
@@ -24,17 +24,17 @@ This is a third tier alongside the existing built-in/custom command sources, del
       scene.find_active_in_layer.md
       asset.find_unused_materials.md
       ...
-    snippets-stats.json           # NEW — invocation counts, last_used, failure streaks
-    snippets-audit.json           # NEW — created_at, verified_at, deprecated, supersedes
+    snippets-audit.json           # NEW — created/verified/deprecated audit trail (committed)
+    snippets-stats.json           # NEW — invocation counts, last_used, failure streaks (gitignored by default)
 ```
 
 - `snippets~/<id>.md` is the only thing the agent ever reads (and only via `cs snippets show` or `cs snippets use`).
-- `snippets-stats.json` is committed by default (team sees usage heat); user can opt out via `.gitignore`.
-- `snippets-audit.json` is committed by default (audit trail).
+- `snippets-audit.json` is committed by default — audit trail is project state.
+- `snippets-stats.json` is **gitignored by default** — usage stats are observability data, mutate on every `use`, would create constant PR noise and merge conflicts. The plugin's `cs setup` adds it to project `.gitignore` automatically. Teams that want shared visibility can opt back in.
 
 ## Snippet Schema
 
-A snippet `.md` file is **frontmatter + a single `csharp` fenced block defining a method named `Run`**. No placeholders inside the body — types are expressed in `Run`'s signature, and the CLI generates the typed call.
+A snippet `.md` file is **frontmatter + a single `csharp` fenced block** containing top-level `using` directives and a `static` method named `Run`. Authors write plain C# with typed parameters; the CLI handles wrapping and call generation on submission.
 
 ```markdown
 ---
@@ -44,15 +44,16 @@ safety: read-only
 args:
   - name: layerName
     type: string
-    required: true
     description: Layer name (case-sensitive)
 example:
   layerName: "Default"
+expected: ["Main Camera", "Directional Light"]   # optional — see Validation Gate
 ---
 
 ```csharp
 using System.Linq;
-List<string> Run(string layerName) {
+
+static List<string> Run(string layerName) {
     return UnityEngine.Object.FindObjectsOfType<GameObject>()
         .Where(g => g.activeInHierarchy && LayerMask.LayerToName(g.layer) == layerName)
         .Select(g => g.name)
@@ -61,28 +62,52 @@ List<string> Run(string layerName) {
 ```
 ```
 
-### Frontmatter fields (all required unless noted)
+### Frontmatter fields
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `id` | string | dotted identifier, regex `^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$`, globally unique |
-| `summary` | string | one line; this is what `search` indexes against |
-| `safety` | enum | `read-only` \| `mutates-undoable` \| `mutates` |
-| `args` | list | each entry: `name`, `type`, `required` (default true), `description` (optional) |
-| `example` | object | one example arg dict; used by the validation gate. Required even for zero-arg snippets (`{}`) |
+| Field | Required | Notes |
+|-------|----------|-------|
+| `id` | yes | dotted identifier, regex `^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$`, globally unique |
+| `summary` | yes | one line; this is what `search` indexes against |
+| `safety` | yes | `read-only` \| `mutates` (see Safety Classes) |
+| `args` | yes | list of `{name, type, description?, default?}`; an arg is optional iff it has a `default` |
+| `example` | yes | one example arg dict; covers all args without defaults; used by validation gate |
+| `expected` | no | opt-in: validation also asserts deep-equality of `Run(example)`'s return against this value |
 
-Audit and stats fields (`created_at`, `verified_at`, `invocations`, `last_used`, `deprecated`, `supersedes`, etc.) are **not** in the snippet file. They live in `snippets-audit.json` / `snippets-stats.json` so reading a snippet is cheap and writing it doesn't churn git diffs every use.
+Audit and stats fields (`created_at`, `verified_at`, `invocations`, `successes`, `failures`, `last_used`, `deprecated`, `supersedes`) are **not** in the snippet file — they live in `snippets-audit.json` / `snippets-stats.json` so reading a snippet is cheap and writing it doesn't churn git diffs every use.
 
 ### Body convention
 
-- Must declare exactly one method named `Run` whose signature matches `args` (in order).
-- May include `using` directives, helper types, or helper local functions before `Run`.
-- The CLI never edits the body; validation rejects bodies that don't contain a parseable `Run` method.
-- Across `cs snippets use` calls each submission redefines `Run`; this is by design (snippets are stateless w.r.t. each other). Implementation may name-mangle on submission to avoid Roslyn shadowing pitfalls — transparent to the snippet author.
+- A single `csharp` fenced block at the top level of the file.
+- May contain `using` directives at the top.
+- Must declare exactly one method named `Run` whose signature matches `args` in order. `Run` and any helper types/methods must be `static`. Local functions are not allowed (use `static` helper methods at the same level instead).
+- May contain additional `static` helper methods or nested types alongside `Run`.
+- The CLI never edits the file. Validation rejects bodies that don't contain a parseable `static Run` method.
+
+### Submission isolation (transparent to authors)
+
+`cs snippets use` does not submit the body verbatim. The CLI wraps it for isolation:
+
+```csharp
+// extracted from body
+using System.Linq;
+
+// auto-generated wrapper
+static class __Snip_a1b2c3d4e5f60718 {
+    static List<string> Run(string layerName) { /* body */ }
+    /* helpers, if any */
+}
+__Snip_a1b2c3d4e5f60718.Run("Default")
+```
+
+The hash in `__Snip_<hash>` is derived from the snippet `id` + body content. This guarantees:
+
+- Repeated `use` of the same snippet reuses the same name (idempotent in the REPL session).
+- Different snippets (or modified versions) get different names; no shadowing or symbol collisions.
+- Helper types/methods are scoped to the wrapper class, can't leak to subsequent submissions.
 
 ## Type Substitution Table
 
-The CLI converts a JSON value (from `--args` or `example`) into a C# literal expression that's spliced into the auto-generated call line. The snippet body never sees the substitution; it just receives a typed C# value.
+The CLI converts a JSON value (from `--args` or `example`) into a C# literal expression spliced into the auto-generated call line. The snippet body never sees the substitution; it just receives a typed C# value. Generated type names are **always fully qualified** so the call doesn't depend on whatever `using` directives the snippet body chose.
 
 | `type` | Input shape | C# literal generated |
 |--------|-------------|----------------------|
@@ -90,122 +115,157 @@ The CLI converts a JSON value (from `--args` or `example`) into a C# literal exp
 | `int` | `42` | `42` |
 | `float` | `3.14` | `3.14f` |
 | `bool` | `true` / `false` | `true` / `false` |
-| `vector2` | `[x, y]` | `new Vector2(x, y)` (each as `float`) |
-| `vector3` | `[x, y, z]` | `new Vector3(x, y, z)` |
-| `vector4` | `[x, y, z, w]` | `new Vector4(x, y, z, w)` |
-| `color` | `[r, g, b]` or `[r, g, b, a]` | `new Color(r, g, b, a)` (alpha defaults to 1) |
-| `expr` | string | spliced **verbatim**; escape hatch for arbitrary C# (e.g. `"Camera.main"`). Snippet author owns correctness. |
+| `vector2` | `[x, y]` | `new UnityEngine.Vector2(x, y)` |
+| `vector3` | `[x, y, z]` | `new UnityEngine.Vector3(x, y, z)` |
+| `vector4` | `[x, y, z, w]` | `new UnityEngine.Vector4(x, y, z, w)` |
+| `color` | `[r, g, b]` or `[r, g, b, a]` | `new UnityEngine.Color(r, g, b, a)` (alpha defaults to 1) |
+| `string[]` | `["a", "b"]` | `new string[] { "a", "b" }` |
+| `int[]` | `[1, 2, 3]` | `new int[] { 1, 2, 3 }` |
+| `float[]` | `[1.0, 2.5]` | `new float[] { 1.0f, 2.5f }` |
 
-Quaternion is intentionally absent. Snippets needing rotations either accept a `vector3` and call `Quaternion.Euler(...)` inside `Run`, or accept a `vector4` and `new Quaternion(...)` it. Keeps the type table small and unambiguous.
+No `Quaternion` (snippets that need rotations accept `vector3` Euler or `vector4` raw and construct inside `Run`). No nested arrays. No `expr` (raw verbatim splice) — it would bypass the type system, undermine `safety` semantics, and effectively allow arbitrary code injection at the call site. If a snippet needs an expression-shaped argument, write it inside `Run` rather than parameterizing it.
+
+### Optional args and defaults
+
+An arg with a `default:` field is optional. Call generation:
+
+- If `--args` includes a value → use it.
+- If omitted → use `default`.
+- An optional arg's `default` value is rendered with the same type substitution rules.
+
+`example` must cover all required args (no `default`). Optional args may be omitted from `example` (then default is used during validation).
 
 ## CLI Surface
 
 All commands return the standard envelope `{ ok, exitCode, summary, data }` and accept the existing shared flags (`--project`, `--json`, `--ip`, `--port`, ...).
 
 ```
-cs snippets list   [--tag T] [--safety S] [--include-deprecated] [--sort hot|cold|recent]
+cs snippets list   [--safety S] [--include-deprecated] [--sort hot|cold|recent]
 cs snippets show   <id>
 cs snippets search <query> [--top N]
 cs snippets use    <id> [--args '<json>'] [--dry-run]
 cs snippets add    <id> --file <md-path> [--no-validate]
 cs snippets update <id> [--file <md-path>] [--set key=value]
 cs snippets deprecate <id> [--reason "..."] [--supersede <new-id>]
-cs snippets remove <id>
-cs snippets prune  [--max-age-days N] [--min-uses M] [--remove] [--dry-run]
+cs snippets prune  [--cold] [--max-age-days N] [--min-uses M] [--remove] [--dry-run]
 cs snippets stats  [--id <id>]
 ```
 
+(9 subcommands. No standalone `remove` — deletion goes through `deprecate` then `prune --remove` to keep destructive paths funneled through one policy.)
+
 ### Behaviors
 
-- **`use`**: validates `--args` against the snippet's `args` schema; generates `Run(<lit>, <lit>, ...)`; submits `<body>` + `<call>` as one `cs exec` submission. Increments stats on `ok=true`. On failure: increments `failures`, `consecutive_failures`; auto-deprecates after 3 consecutive failures.
-- **`add`**: see Validation Gate below. Refuses to overwrite an existing id (use `update`).
-- **`update --file`**: re-runs validation gate. `update --set` (metadata-only) skips validation.
+- **`use`**: validates `--args` against the snippet's schema; generates `__Snip_<hash>.Run(<lit>, ...)`; submits wrapped body + call as one `cs exec` submission. On `ok=true`: `successes++`, `last_used = now`, `consecutive_failures = 0`. On Run-body error (compilation or runtime exception during `Run`): `failures++`, `consecutive_failures++`. Caller errors (bad `--args`, snippet not found) and environment errors (Unity not running, network) do **not** count toward failures.
+- **`add`**: validation gate, see below. Refuses to overwrite an existing id (use `update`).
+- **`update --file`**: re-runs validation gate. Existing stats preserved; audit gets a new `verified_at`.
+- **`update --set key=value`**: restricted to fields that cannot affect execution: `summary`, an arg's `description`. Changing `args`, `example`, `safety`, `expected`, or anything in the code body requires `--file` (full re-validation).
 - **`deprecate`**: writes audit entry; snippet stays on disk and remains usable but is hidden from default `list` / `search`.
-- **`remove`**: hard delete (file + audit + stats entries). Reserved for the rare case where deprecate-then-prune isn't enough.
 - **`search`**: lexical match over `id` / `summary`; results are token-cheap (`{id, summary, args-summary}` per hit, no body). Default `--top 5`.
-- **`prune`**: default action is to mark deprecated, not delete. `--remove` deletes deprecated entries older than 30 days.
+- **`prune`**: default action targets only already-deprecated entries (does nothing to live ones). With `--cold`, also marks cold snippets (see Aging) as deprecated. `--remove` deletes deprecated entries whose `deprecated_at > 30d ago`. `--dry-run` prints the plan, takes no action.
 
 The `--help` text for `cs list-commands` and `cs catalog` cross-references `cs snippets` (and vice versa) so the agent can navigate concept boundaries.
 
+## Safety Classes
+
+Two classes — collapsed from an earlier three-class design after recognizing that `Undo.PerformUndo()` is not a sufficient validation oracle (a snippet that forgot to register undo passes the gate while leaving editor state mutated, and undo groups can affect prior unrelated editor actions).
+
+- **`read-only`**: pure query, no scene/asset/file/setting changes. Auto-validated by the gate.
+- **`mutates`**: any side effect on scene, assets, files, ProjectSettings, etc. **Cannot** be auto-validated. `add` / `update --file` requires `--no-validate`; the audit entry is marked `unverified: true`; `cs snippets list` prefixes the row with ⚠.
+
+Snippets that touch `AssetDatabase`, write files, change ProjectSettings, trigger refreshes, or affect domain reload state are always `mutates`. The classification is the snippet author's responsibility; the CLI does not infer it.
+
 ## Validation Gate
 
-Triggered by `add` and by `update --file`. Steps for a snippet with safety class S and one `example`:
+Triggered by `add` and by `update --file`. Steps for a snippet with safety class S:
 
-1. **Parse**: validate frontmatter shape; `id` regex + uniqueness; `args` schema sanity; example covers all required args.
-2. **Substitute**: render the call line `Run(<typed-literal>, ...)` from `example`.
-3. **Execute**: branch on safety:
-   - `read-only`: POST `<body> + <call>` to `cs exec`; require `ok=true && exitCode=0`.
-   - `mutates-undoable`: same, then immediately POST `cs exec "UnityEditor.Undo.PerformUndo();"` and require `ok=true`. Snippet body is responsible for using `Undo.RegisterCompleteObjectUndo` etc; CLI does not check this statically.
-   - `mutates`: refused unconditionally. To force, caller passes `--no-validate`; the audit entry is marked `unverified: true` and `cs snippets list` prefixes the row with ⚠.
-4. **Persist**: on success, write body to `snippets~/<id>.md`; write audit entry with `created_at` / `verified_at`; initialize stats entry.
-5. **Fail-closed**: any failure prints (a) the rendered submission, (b) the `cs exec` response, (c) which step failed. No file is written.
+1. **Parse**: validate frontmatter shape; `id` regex + uniqueness; `args` schema sanity; `example` covers all required args; body has parseable `static Run` matching the args.
+2. **Render**: generate the wrapped submission (class wrapper + call line) using `example` values.
+3. **Execute** (only if `S == read-only`):
+   - POST `cs exec <wrapped-submission>`.
+   - Require `ok=true && exitCode=0`.
+   - If `expected` is present: deserialize Run's return value (from cs exec result) and assert deep-equality with `expected`. Mismatch → fail.
+4. **Refuse** (if `S == mutates`): require `--no-validate`. With it, write the file but mark `unverified: true` in audit and skip steps 3.
+5. **Persist**: on success, write body to `snippets~/<id>.md`; write audit entry with `created_at` / `verified_at` / `unverified` flag; initialize stats entry (zeros, `last_used = created_at`).
+6. **Fail-closed**: any failure prints (a) the rendered submission, (b) the `cs exec` response, (c) which step failed. No file is written.
 
-`update --file` follows the same flow; the snippet's existing stats are preserved across the update; audit gets a new `verified_at`.
+The gate is a **smoke test**, not a correctness oracle. Authors who want stronger validation use the `expected` field; without it, validation only proves the snippet runs without crashing under the example inputs.
 
 ## Self-Evolution Rules (codified in the skill)
 
 These rules go into `skills/unity-cli-snippets/SKILL.md` as hard guidance:
 
-**Lookup-first (strict)**
+**Decision order (strict)**
 
-> Before writing ad-hoc `cs exec` for any non-trivial Unity automation task, run `cs snippets search <task description>`. "Non-trivial" = >3 lines, or uses LINQ / reflection / AssetDatabase / multi-step. **Never** `Read` or `ls` `.unity-cli/snippets~/` directly.
+> Before writing ad-hoc `cs exec` for any non-trivial Unity automation task:
+> 1. `cs list-commands [--type custom]` — is there a built-in or custom command? Use `cs command` if so.
+> 2. `cs snippets search <description>` — is there a matching snippet? Use it.
+> 3. Only if neither match, write ad-hoc `cs exec`.
+>
+> "Non-trivial" = >3 lines, or uses LINQ / reflection / AssetDatabase / multi-step.
+> **Never** `Read` or `ls` `.unity-cli/snippets~/` directly.
 
 **Distill criteria** (all must hold):
 
 - Code is parameterized (or trivially can be parameterized into 1–4 typed args).
 - Solves a recurring concept: query, batch op, common workflow.
-- Either: took >2 attempts to get right, OR the user signaled "save this".
+- Either: user signaled "save this", OR you judge the pattern likely to recur.
 
 **Anti-criteria** (any disqualifies):
 
-- Project-specific one-shot ("rename this exact path").
+- One-shot operation tied to an exact path/name/id.
 - Trivial enough that the snippet wrapper is no shorter than the original.
-- Depends on project-private types not in standard Unity.
+- Depends on ephemeral or generated symbols (autogen code, runtime-injected types) that won't exist if the project is reopened from a fresh checkout.
 - Half-working / WIP.
 
 **Collision handling**
 
 - `use <id>` failed → diagnose first.
-- Snippet bug → `update`, document Unity version in audit if it's API drift.
+- Snippet bug → `update --file`, document Unity version in audit if it's API drift.
 - Project-specific issue → don't update; ad-hoc this time.
 
 **Supersede flow**
 
-- New snippet replaces old → `cs snippets deprecate <old> --supersede <new-id>`. Don't `remove` immediately; let `prune` retire it after the cool-down.
+- New snippet replaces old → `cs snippets deprecate <old> --supersede <new-id>`. Don't `prune --remove` immediately; let the 30-day cool-down handle it.
 
 ## Stats & Aging
 
-`.unity-cli/snippets-stats.json`:
+`.unity-cli/snippets-stats.json` (gitignored by default):
 
 ```json
 {
   "version": 1,
   "snippets": {
     "scene.find_active_in_layer": {
-      "invocations": 12,
       "successes": 11,
       "failures": 1,
       "last_used": "2026-05-06T10:30:00Z",
       "last_failure": "2026-04-28T14:00:00Z",
+      "first_failure_in_streak": null,
       "consecutive_failures": 0
     }
   }
 }
 ```
 
+`invocations` is derived as `successes + failures` whenever needed (not stored). `hot` / `cold` heat metrics are based on `successes`, not the derived total — failed runs don't increase heat.
+
+For a snippet that has never been used, `last_used` is treated as equal to its `created_at` from the audit file (so `cold` rules don't immediately fire on freshly-added snippets).
+
 ### Default policy
 
-| State | Trigger | Action |
-|-------|---------|--------|
-| Cold | `last_used > 90d ago && invocations < 3` | mark deprecated |
-| Broken | `consecutive_failures >= 3` | auto-deprecate; audit `reason: "3 consecutive failures since <date>"` |
-| Hot | `invocations > 10 && last_used within 7d` | highlighted in `list --sort hot` (informational) |
+| State | Trigger | Default action |
+|-------|---------|----------------|
+| Cold | `last_used > 90d ago && successes < 3` | **informational only** — highlighted in `list --sort cold`; no auto-action |
+| Broken | `consecutive_failures >= 5 && (last_failure − first_failure_in_streak) >= 7d` | auto-deprecate; audit `reason: "5 consecutive failures over <span>d since <date>"` |
+| Hot | `successes > 10 && last_used within 7d` | highlighted in `list --sort hot` (informational) |
+
+Auto-deprecation on the broken rule requires both **count** (5 strikes) and **time spread** (≥ 7 days between the streak's first and last failure). Transient flakes during a single bad-Unity-state session do not trip it.
 
 `cs snippets prune`:
 
-- Default: marks cold/broken as deprecated, does not delete.
-- `--remove`: deletes deprecated entries whose `deprecated_at > 30d ago`.
-- `--dry-run`: prints the plan, takes no action.
+- **Default**: only acts on already-deprecated entries; `--remove` deletes those with `deprecated_at > 30d ago`. Without `--remove`, it's a no-op.
+- **`--cold`**: opt-in cold pruning — marks cold snippets as deprecated (does not delete). For users who want to actively curate; never automatic.
+- **`--dry-run`**: prints the plan, takes no action.
 
 ## SKILL.md Outline (`skills/unity-cli-snippets/SKILL.md`)
 
@@ -225,35 +285,37 @@ description: >
 
 # Unity CLI Snippets
 
-## Lookup-first (strict)
-Always run `cs snippets search <description>` before ad-hoc cs exec.
+## Decision order (strict)
+1. cs list-commands [--type custom]    — built-in / custom command?
+2. cs snippets search <description>    — matching snippet?
+3. Ad-hoc cs exec only if neither.
 NEVER ls/Read .unity-cli/snippets~/ directly.
 
 ## Workflow
 search → (show) → use → (distill if reusable)
 
-## CLI quick reference
-[6-line table: list / show / search / use / add / deprecate]
+## CLI quick reference (the 5 you'll actually use)
+search / show / use / add / deprecate
+[full set: list / show / search / use / add / update / deprecate / prune / stats — see cs snippets --help]
 
 ## Snippet anatomy
-[one full annotated example showing the Run-method convention]
+[one full annotated example showing the static Run convention]
 
 ## When to distill / NOT to distill
-[the 4+4 rules from the spec]
+[the criteria + anti-criteria from the spec]
 
 ## Safety classes
-- read-only / mutates-undoable / mutates: one line each
+- read-only: pure query, auto-validated
+- mutates: side effects, requires --no-validate, marked unverified
+
+## Validation gate
+Smoke test only. Use the optional `expected` field for return-value assertions.
 
 ## DO NOT
 - Read .unity-cli/snippets~/ directly
 - Hand-edit snippet .md files (use add/update)
 - Skip search before ad-hoc exec
-- Distill project-specific one-offs
-
-## Boundary with cs command / cs exec
-- Built-in/custom command available → cs command
-- One-off ad-hoc → cs exec
-- Reusable ad-hoc → cs snippets
+- Distill one-shot operations or trivial one-liners
 ```
 
 ## Three-Tier Independence
@@ -274,29 +336,35 @@ Hard rules:
 Skill-level updates to existing skills (small additions, not rewrites):
 
 - `unity-cli-command/SKILL.md`: add a line "if no built-in/custom command matches → check `unity-cli-snippets` before falling back to `unity-cli-exec-code`".
-- `unity-cli-exec-code/SKILL.md`: add a line "before writing ad-hoc, run `cs snippets search`. After solving a non-trivial reusable task, consider distilling."
+- `unity-cli-exec-code/SKILL.md`: add a line "before writing ad-hoc, run `cs list-commands` and `cs snippets search`. After solving a non-trivial reusable task, consider distilling."
+
+Operational independence (the agent actually following decision order) is enforced by skill wording, not by CLI invariants — this is by design; the CLI itself stays minimal and unopinionated.
 
 ## Out of Scope (Explicit Non-Goals)
 
+- **No `mutates-undoable` safety class.** Originally proposed; cut after recognizing `Undo.PerformUndo()` is not a sufficient rollback oracle. Authors classify mutating snippets as `mutates` and skip auto-validation.
+- **No `expr` arg type.** Splicing arbitrary C# at the call site bypasses type checks and undermines safety classification. Snippets needing expression-shaped values build them inside `Run`.
+- **No `Quaternion` arg type.** `vector3` (Euler) or `vector4` (raw) accepted, snippet constructs inside `Run`.
+- **No nested arrays / dictionaries / object args.** Keeps the type table small. JSON object args are out of scope.
 - **No auto-distill from `cs exec` history.** csharpconsole doesn't track exec history; even if it did, project-specific code would pollute the library. Distillation is always an explicit `cs snippets add <id> --file <md>` action by the agent.
-- **No snippet-calling-snippet.** Composition via shared REPL state is fragile across domain reloads. If you need composition, the agent sequences multiple `cs snippets use` calls and threads state through `cs exec` between them.
-- **No `Quaternion` type.** Snippets that need rotations accept `vector3` (Euler) or `vector4` (raw) and construct inside `Run`.
+- **No snippet-calling-snippet.** Composition via shared REPL state is fragile across domain reloads. If you need composition, the agent sequences multiple `cs snippets use` calls.
 - **No embedding-based search.** Lexical match only; stdlib-only constraint.
 - **No PR-back-to-plugin tooling.** Sharing snippets across projects is left as a manual copy-paste, deliberately. The plugin's `unity-cli-snippets` skill ships **no** baseline snippets — every project's library starts empty.
 - **No snippet-renaming.** `id` is the primary key; renaming = deprecate-then-add-new with `--supersede`.
+- **No semantic correctness oracle.** Validation gate is a smoke test. Authors who want assertions use the optional `expected` frontmatter field; deeper testing is out of scope.
 
 ## Deliverables
 
 | # | Change | Files |
 |---|--------|-------|
-| 1 | Type substitution + call generation | `cli/snippets/render.py` (new) |
+| 1 | Type substitution + class wrapper + call generation | `cli/snippets/render.py` (new) |
 | 2 | Snippet file IO + frontmatter parsing | `cli/snippets/store.py` (new) |
-| 3 | Validation gate | `cli/snippets/validate.py` (new) |
+| 3 | Validation gate (read-only auto, mutates refusal, optional `expected`) | `cli/snippets/validate.py` (new) |
 | 4 | Stats / audit IO + aging policy | `cli/snippets/stats.py` (new) |
-| 5 | `cs snippets` subcommand wiring | `cli/cs.py` |
+| 5 | `cs snippets` subcommand wiring (9 subcommands) | `cli/cs.py` |
 | 6 | Skill content | `skills/unity-cli-snippets/SKILL.md` (new) |
 | 7 | Cross-reference updates in existing skills | `skills/unity-cli-command/SKILL.md`, `skills/unity-cli-exec-code/SKILL.md` |
-| 8 | `.gitignore` adjustments (no-op by default; document opt-out) | `.gitignore`, README |
+| 8 | `.gitignore` addition for `snippets-stats.json` (auto-applied by `cs setup`) | `.gitignore` template + `cli/cs.py` |
 | 9 | CLAUDE.md + READMEs | `CLAUDE.md`, `README.md`, `README_zh.md` |
 | 10 | CHANGELOG entry under `[Unreleased]` | `CHANGELOG.md` |
 
@@ -304,8 +372,8 @@ Skill-level updates to existing skills (small additions, not rewrites):
 
 | Phase | Deliverables |
 |-------|--------------|
-| D0 | Render + Store + Validate + Stats modules with unit-style smoke tests via `cs exec` |
-| D1 | `cs snippets` CLI surface (list / show / search / use / add / update / deprecate / remove / prune / stats) |
-| D2 | `unity-cli-snippets` SKILL.md, cross-references in existing skills, docs (CLAUDE.md / READMEs / CHANGELOG) |
+| D0 | Render + Store + Validate (read-only) + Stats (init/read) modules; minimal CLI: `add` / `use` / `list` / `show`. End-to-end loop on a real Unity project, one hand-written snippet validated through `add` and called through `use`. |
+| D1 | Remaining CLI: `search` / `update` / `deprecate` / `prune` / `stats`. Mutates-class refusal path. Aging policy (cold/broken classification). |
+| D2 | `unity-cli-snippets` SKILL.md + cross-references in `unity-cli-command` / `unity-cli-exec-code`. Docs: CLAUDE.md, READMEs (EN+CN), CHANGELOG. `.gitignore` integration. |
 
-Each phase is independently reviewable and shippable; D1 depends on D0; D2 depends on D1.
+D0 proves the architecture (the wrap-and-validate-and-execute loop) on the smallest possible surface before D1 expands it. Each phase is independently reviewable and shippable; D1 depends on D0; D2 depends on D1.
