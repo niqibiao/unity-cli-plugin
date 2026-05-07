@@ -1163,7 +1163,7 @@ def cmd_snippets_list(root, args):
         for r in rows:
             tags = []
             if r["unverified"]:
-                tags.append("⚠unverified")
+                tags.append("UNVERIFIED")
             if r["deprecated"]:
                 tags.append("DEPRECATED")
             tag_s = f" [{', '.join(tags)}]" if tags else ""
@@ -1197,6 +1197,7 @@ def cmd_snippets_show(root, args):
     if args.as_json:
         json.dump({
             "ok": True, "exitCode": 0,
+            "summary": snip["summary"],
             "data": {
                 "id": snip["id"], "summary": snip["summary"],
                 "safety": snip["safety"], "args": snip["args"],
