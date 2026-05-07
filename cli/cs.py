@@ -1513,6 +1513,45 @@ def cmd_snippets_prune(root, args):
     return 0
 
 
+def cmd_snippets_stats(root, args):
+    from cli.snippets.stats import load_stats, classify_state, _now
+
+    stats = load_stats(root)
+    items = stats.get("snippets", {})
+    rows = []
+    now_iso = _now()
+    target = (items.items() if not args.snippet_id
+              else [(args.snippet_id, items.get(args.snippet_id))])
+    for sid, entry in target:
+        if entry is None:
+            continue
+        rows.append({
+            "id": sid,
+            "successes": entry.get("successes", 0),
+            "failures": entry.get("failures", 0),
+            "invocations": entry.get("successes", 0) + entry.get("failures", 0),
+            "last_used": entry.get("last_used"),
+            "consecutive_failures": entry.get("consecutive_failures", 0),
+            "state": classify_state(entry, now_iso),
+        })
+
+    rows.sort(key=lambda r: -r["successes"])
+    result = {
+        "ok": True, "exitCode": 0,
+        "summary": f"stats for {len(rows)} snippet(s)",
+        "data": {"stats": rows},
+    }
+    if args.as_json:
+        json.dump(result, sys.stdout, ensure_ascii=False, indent=2)
+        print()
+    else:
+        print(result["summary"])
+        for r in rows:
+            print(f"  {r['id']:40s} successes={r['successes']:4d} "
+                  f"failures={r['failures']:4d} state={r['state']}")
+    return 0
+
+
 def cmd_snippets_show(root, args):
     from cli.snippets.store import read_snippet_file, parse_snippet_file
     from cli.snippets.stats import load_audit, load_stats
@@ -1707,6 +1746,11 @@ def main():
     sp_sn_prune.add_argument("--max-age-days", type=int, default=30, dest="max_age_days")
     sp_sn_prune.add_argument("--dry-run", dest="dry_run", action="store_true")
 
+    sp_sn_stats = sn_sub.add_parser("stats", parents=[shared],
+                                     help="Show usage stats")
+    sp_sn_stats.add_argument("--id", dest="snippet_id", default=None,
+                             help="Show stats for a single snippet (default: all)")
+
     args = p.parse_args()
 
     # Apply defaults for any shared arg the user didn't pass (SUPPRESS leaves
@@ -1799,6 +1843,8 @@ def main():
             sys.exit(cmd_snippets_deprecate(root, args))
         elif args.snippets_cmd == "prune":
             sys.exit(cmd_snippets_prune(root, args))
+        elif args.snippets_cmd == "stats":
+            sys.exit(cmd_snippets_stats(root, args))
         else:
             sp_sn.print_help()
             sys.exit(1)
