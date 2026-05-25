@@ -148,6 +148,18 @@ class ConsoleSession:
         self._using = lambda: ""
 
     def exec(self, code, reset=False):
+        # In runtime mode, the snippet must be compiled by the editor and
+        # forwarded to the player — execute_runtime_request POSTs to the
+        # "compile" endpoint with targetIP/targetPort. Without this branch
+        # we'd POST to "editor" and silently run in the local editor.
+        if self._state.runtime_mode:
+            return self._client.execute_runtime_request(
+                self._post, self._parser.parse_text_http_response,
+                self._define, self._using,
+                self._state.runtime_ip, self._state.runtime_port,
+                self._state.runtime_dll_path,
+                code, self._session_id, reset,
+            )
         return self._client.execute_editor_request(
             self._post, self._parser.parse_text_http_response,
             self._define, self._using, code, self._session_id, reset,

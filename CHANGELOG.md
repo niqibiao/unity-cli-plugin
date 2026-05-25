@@ -11,6 +11,19 @@ the section matching the pushed tag (without the leading `v`) as release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- `cs exec --mode runtime` now actually runs on the player. Previously the
+  CLI's `ConsoleSession.exec` unconditionally called `execute_editor_request`,
+  so runtime-mode snippets were POSTed to the editor's `"editor"` endpoint
+  (via `compile_ip:compile_port`) without `targetIP/targetPort`, silently
+  executing in the local Editor instead of the player and ignoring `--ip`
+  entirely. The exec path now mirrors the REPL: in runtime mode it calls
+  `execute_runtime_request`, which POSTs to `"compile"` with
+  `targetIP/targetPort` so the Editor compiles and forwards to the player.
+  `command` / `batch` / `complete` continue to route through the editor by
+  design (matching the REPL's behavior — most commands are editor-only).
+
 ## [1.4.3] - 2026-04-29
 
 ### Changed
