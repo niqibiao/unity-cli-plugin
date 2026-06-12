@@ -1,7 +1,5 @@
 """Snippet validation: smoke-test runs example through a code runner."""
 
-import json
-
 from cli.snippets.render import render_submission
 
 
@@ -9,23 +7,17 @@ class ValidationError(Exception):
     pass
 
 
-def _extract_return_value(response):
-    """Pull the REPL's last-expression result out of a session response.
+def _extract_result_text(response):
+    """Pull the REPL's last-expression result out of an exec response.
 
-    csharpconsole returns either ``data.resultJson`` (string-encoded JSON) for
-    serializable values, or omits it for void / unsupported. Caller should
-    handle None.
+    The exec endpoint serializes the result via ``ToString()`` into
+    ``data.text`` — it never emits structured JSON (``resultJson`` exists
+    only on the command endpoint). ``expected`` is therefore defined as a
+    string compared against this text.
     """
     data = response.get("data") or {}
-    rj = data.get("resultJson")
-    if rj is None:
-        return None
-    if isinstance(rj, str):
-        try:
-            return json.loads(rj)
-        except (ValueError, TypeError):
-            return rj
-    return rj
+    text = data.get("text")
+    return text if isinstance(text, str) else None
 
 
 def validate_snippet(snippet, code_runner, no_validate=False):
@@ -66,8 +58,8 @@ def validate_snippet(snippet, code_runner, no_validate=False):
         raise ValidationError(f"validation failed: {msg}")
 
     if "expected" in snippet and snippet["expected"] is not None:
-        actual = _extract_return_value(response)
-        if actual != snippet["expected"]:
+        actual = _extract_result_text(response)
+        if actual is None or actual.strip() != snippet["expected"].strip():
             raise ValidationError(
                 f"expected mismatch: got {actual!r}, want {snippet['expected']!r}"
             )

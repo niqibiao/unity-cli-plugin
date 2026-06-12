@@ -55,19 +55,22 @@ args:
     type: string
 example:
   layerName: "Default"
-expected: ["Main Camera", "Directional Light"]   # optional
 ---
 
 ```csharp
 using System.Linq;
 
-static List<string> Run(string layerName) {
-    return UnityEngine.Object.FindObjectsOfType<GameObject>()
+static string Run(string layerName) {
+    return string.Join(",", UnityEngine.Object.FindObjectsOfType<GameObject>()
         .Where(g => g.activeInHierarchy && LayerMask.LayerToName(g.layer) == layerName)
-        .Select(g => g.name).ToList();
+        .Select(g => g.name));
 }
 ```
 ````
+
+An optional `expected: "<string>"` frontmatter field makes validation also compare
+the textual REPL result (the `ToString()` of `Run`'s return value) — return a
+string (as above) when you want that assertion to be meaningful.
 
 - Body must define one `static Run(...)` method matching `args` order.
 - Helpers go alongside `Run` as `static` members. No local functions.
@@ -101,10 +104,10 @@ Snippets that touch `AssetDatabase`, write files, change `ProjectSettings`, trig
 
 `add` (and `update --file`) runs the snippet's `example` once through the REPL:
 
-- `read-only`: must return `ok=true`. With optional `expected:` field, return value is also checked for deep equality.
+- `read-only`: must return `ok=true`. With the optional `expected:` string, the textual result (the `ToString()` of `Run`'s return value) must also match. The REPL never returns structured JSON — have `Run` return a formatted string when you want a meaningful assertion.
 - `mutates`: refused unless `--no-validate`.
 
-The gate is a **smoke test**, not a correctness oracle. Use `expected:` for return-value assertions.
+The gate is a **smoke test**, not a correctness oracle. Use `expected:` for result assertions.
 
 ## Argument Types
 
@@ -120,7 +123,7 @@ No `Quaternion` (use `vector3` Euler or `vector4` raw inside `Run`). No `expr` (
 
 ## Aging
 
-`stats` fields track `successes`, `failures`, `last_used`, `consecutive_failures`. Snippets are auto-deprecated only when `consecutive_failures >= 5` AND the streak spans ≥ 7 days. Cold detection (low usage / old) is **informational** in `list --sort cold`; `prune --cold` is opt-in.
+`stats` fields track `successes`, `failures`, `last_used`, `consecutive_failures`. Only Run-body errors count as failures — environment errors (Unity not running, network) never do. A snippet is auto-deprecated at `use` time only when `consecutive_failures >= 5` AND the streak spans ≥ 7 days. Cold detection (low usage / old) is **informational** in `list --sort cold`; `prune --cold` is opt-in and default `prune` never touches live snippets.
 
 ## DO NOT
 

@@ -46,7 +46,7 @@ class AuditTests(unittest.TestCase):
         e = load_audit(self.root)["snippets"]["scene.x"]
         self.assertTrue(e["deprecated"])
         self.assertEqual(e["deprecated_reason"], "superseded")
-        self.assertEqual(e["supersedes"], "scene.y")
+        self.assertEqual(e["superseded_by"], "scene.y")
         self.assertEqual(e["deprecated_at"], "2026-06-01T00:00:00Z")
 
     def test_init_audit_entry_rejects_duplicate(self):

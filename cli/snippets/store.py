@@ -169,6 +169,12 @@ def _validate(snip):
         seen_names.add(spec["name"])
     if not isinstance(snip["example"], dict):
         raise SnippetParseError("example must be a mapping")
+    if snip.get("expected") is not None and not isinstance(snip["expected"], str):
+        raise SnippetParseError(
+            "expected must be a string — it is compared against the textual "
+            "REPL result (the ToString of Run's return value); have Run "
+            "return a formatted string for structured assertions"
+        )
     for spec in snip["args"]:
         if "default" not in spec and spec["name"] not in snip["example"]:
             raise SnippetParseError(

@@ -173,6 +173,17 @@ class RenderSubmissionTests(unittest.TestCase):
                 arg_values={},
             )
 
+    def test_unknown_arg_raises(self):
+        # A typoed optional-arg name must fail loudly, not silently fall
+        # back to the default.
+        with self.assertRaises(ValueError) as ctx:
+            render_submission(
+                snippet_id="x.y", body=SAMPLE_BODY,
+                args_schema=SAMPLE_ARGS_SCHEMA,
+                arg_values={"layerName": "Default", "layerNmae": "oops"},
+            )
+        self.assertIn("layerNmae", str(ctx.exception))
+
     def test_indented_using_var_not_hoisted(self):
         body = '''static int Run() {
     using var r = new System.IO.StringReader("hi");

@@ -50,10 +50,20 @@ class ParseSnippetTests(unittest.TestCase):
     def test_expected_field_optional(self):
         text = SAMPLE.replace(
             'example:\n  layerName: "Default"\n',
-            'example:\n  layerName: "Default"\nexpected: ["A", "B"]\n',
+            'example:\n  layerName: "Default"\nexpected: "A,B"\n',
         )
         snip = parse_snippet_file(text)
-        self.assertEqual(snip["expected"], ["A", "B"])
+        self.assertEqual(snip["expected"], "A,B")
+
+    def test_expected_must_be_string(self):
+        # expected is compared against the textual REPL result (ToString),
+        # so structured values can never match and are rejected at parse time.
+        text = SAMPLE.replace(
+            'example:\n  layerName: "Default"\n',
+            'example:\n  layerName: "Default"\nexpected: ["A", "B"]\n',
+        )
+        with self.assertRaises(SnippetParseError):
+            parse_snippet_file(text)
 
     def test_missing_id_raises(self):
         text = SAMPLE.replace("id: scene.find_active_in_layer\n", "")

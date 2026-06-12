@@ -18,8 +18,10 @@ SAMPLE_SNIPPET = {
 }
 
 
-def _ok_response(payload="[\"Default\"]"):
-    return {"ok": True, "exitCode": 0, "data": {"resultJson": payload}}
+def _ok_response(text="Default"):
+    # Mirrors the real exec response shape: the service ToString()s the
+    # result into data.text (never structured JSON).
+    return {"ok": True, "exitCode": 0, "data": {"text": text}}
 
 
 def _err_response(summary="compile error"):
@@ -45,18 +47,25 @@ class ValidateReadOnlyTests(unittest.TestCase):
         self.assertIn("compile error", str(ctx.exception))
 
     def test_expected_match_passes(self):
-        snip = dict(SAMPLE_SNIPPET, expected=["Default"])
+        snip = dict(SAMPLE_SNIPPET, expected="Default")
         def fake_runner(code):
-            return _ok_response('["Default"]')
+            return _ok_response("Default")
         validate_snippet(snip, fake_runner)
 
     def test_expected_mismatch_fails(self):
-        snip = dict(SAMPLE_SNIPPET, expected=["Default"])
+        snip = dict(SAMPLE_SNIPPET, expected="Default")
         def fake_runner(code):
-            return _ok_response('["Other"]')
+            return _ok_response("Other")
         with self.assertRaises(ValidationError) as ctx:
             validate_snippet(snip, fake_runner)
         self.assertIn("expected", str(ctx.exception).lower())
+
+    def test_expected_fails_when_response_has_no_text(self):
+        snip = dict(SAMPLE_SNIPPET, expected="Default")
+        def fake_runner(code):
+            return {"ok": True, "exitCode": 0, "data": {}}
+        with self.assertRaises(ValidationError):
+            validate_snippet(snip, fake_runner)
 
     def test_mutates_refused_without_flag(self):
         snip = dict(SAMPLE_SNIPPET, safety="mutates")

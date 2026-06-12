@@ -121,6 +121,10 @@ def render_submission(snippet_id, body, args_schema, arg_values):
         }
         __Snip_<hash16>.Run(<typed-literal>, ...)
     """
+    unknown = sorted(set(arg_values) - {spec["name"] for spec in args_schema})
+    if unknown:
+        raise ValueError(f"unknown arg(s): {', '.join(unknown)}")
+
     rendered_args = []
     for spec in args_schema:
         name = spec["name"]

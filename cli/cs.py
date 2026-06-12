@@ -1125,15 +1125,22 @@ def cmd_snippets_use(root, args, agent_root):
     code_runner = session.exec
     response = code_runner(submission)
 
-    # Stats: any non-ok response counts as a failure today. Network/env errors
-    # currently propagate as exceptions (uncaught) rather than non-ok responses,
-    # so they don't reach record_failure — an accidental but desirable behavior.
-    # If the transport layer ever returns an envelope for env failures, this
-    # branch will need a way to distinguish Run-body errors from env errors.
+    # Stats taxonomy: only Run-body errors (compile / runtime) count toward
+    # the failure streak. Environment errors — Unity not running, network —
+    # come back as ok=false envelopes with type "system_error" (core_bridge
+    # wraps transport exceptions into envelopes; verified empirically) and
+    # must not poison the streak, or offline retries would auto-deprecate
+    # perfectly good snippets.
     if response.get("ok") and response.get("exitCode", 0) == 0:
         record_success(root, args.snippet_id)
-    else:
+    elif response.get("type") != "system_error":
         record_failure(root, args.snippet_id)
+        from cli.snippets.stats import auto_deprecate_if_broken
+        if auto_deprecate_if_broken(root, args.snippet_id):
+            print(f"warning: snippet {args.snippet_id!r} auto-deprecated "
+                  f"after a qualifying failure streak "
+                  f"(see `cs snippets stats --id {args.snippet_id}`)",
+                  file=sys.stderr)
 
     if args.as_json:
         json.dump(response, sys.stdout, ensure_ascii=False, indent=2)
@@ -1466,16 +1473,17 @@ def cmd_snippets_prune(root, args):
     actions = {"deprecate": [], "remove": []}
     now_iso = _now()
 
-    for sid in list_snippet_ids(root):
-        a = audit["snippets"].get(sid, {})
-        if a.get("deprecated"):
-            continue
-        entry = stats["snippets"].get(sid, {})
-        state = classify_state(entry, now_iso)
-        if state == "broken":
-            actions["deprecate"].append((sid, state))
-        elif state == "cold" and args.cold:
-            actions["deprecate"].append((sid, state))
+    # Default prune only acts on already-deprecated entries (spec: without
+    # --remove it is a no-op). Broken-streak auto-deprecation happens at
+    # `use` time, never here. --cold opts in to deprecating cold snippets.
+    if args.cold:
+        for sid in list_snippet_ids(root):
+            a = audit["snippets"].get(sid)
+            if a is None or a.get("deprecated"):
+                continue
+            entry = stats["snippets"].get(sid, {})
+            if classify_state(entry, now_iso) == "cold":
+                actions["deprecate"].append((sid, "cold"))
 
     if args.remove:
         now = datetime.now(timezone.utc)
@@ -1510,25 +1518,22 @@ def cmd_snippets_prune(root, args):
                 print(f"  remove:    {sid}")
         return 0
 
-    for sid, state in actions["deprecate"]:
-        entry = stats["snippets"].get(sid, {})
-        if state == "broken":
-            reason = (f"{entry.get('consecutive_failures')} consecutive failures "
-                      f"between {entry.get('first_failure_in_streak')} "
-                      f"and {entry.get('last_failure')}")
-        else:
-            reason = "cold (low usage)"
-        mark_deprecated(root, sid, reason=reason)
+    for sid, _state in actions["deprecate"]:
+        mark_deprecated(root, sid, reason="cold (low usage)")
 
-    for sid in actions["remove"]:
-        p = snippet_path(root, sid)
-        try:
-            p.unlink()
-        except OSError:
-            pass
-        audit["snippets"].pop(sid, None)
-        stats["snippets"].pop(sid, None)
     if actions["remove"]:
+        # Reload: mark_deprecated persisted entries after our initial load;
+        # writing back the stale in-memory copy would erase them.
+        audit = load_audit(root)
+        stats = load_stats(root)
+        for sid in actions["remove"]:
+            p = snippet_path(root, sid)
+            try:
+                p.unlink()
+            except OSError:
+                pass
+            audit["snippets"].pop(sid, None)
+            stats["snippets"].pop(sid, None)
         save_audit(root, audit)
         save_stats(root, stats)
 

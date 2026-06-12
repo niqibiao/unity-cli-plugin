@@ -56,7 +56,7 @@ def init_audit_entry(project_root, snippet_id, *, verified, when=None):
         "deprecated": False,
         "deprecated_at": None,
         "deprecated_reason": None,
-        "supersedes": None,
+        "superseded_by": None,
     }
     save_audit(project_root, audit)
 
@@ -70,7 +70,7 @@ def mark_deprecated(project_root, snippet_id, *, reason=None, supersede=None, wh
     e["deprecated"] = True
     e["deprecated_at"] = when
     e["deprecated_reason"] = reason
-    e["supersedes"] = supersede
+    e["superseded_by"] = supersede
     save_audit(project_root, audit)
 
 
@@ -159,6 +159,30 @@ def _days_between(a, b):
     if da is None or db is None:
         return 0
     return abs((db - da).days)
+
+
+def auto_deprecate_if_broken(project_root, snippet_id, policy=DEFAULT_POLICY):
+    """Auto-deprecate *snippet_id* if its failure streak qualifies as broken.
+
+    Called by `use` right after a Run-body failure is recorded (the spec's
+    sanctioned trigger point — default `prune` never touches live snippets).
+    Returns True if the snippet was deprecated by this call.
+    """
+    audit = load_audit(project_root)
+    entry = audit["snippets"].get(snippet_id)
+    if entry is None or entry.get("deprecated"):
+        return False
+    stats_entry = load_stats(project_root)["snippets"].get(snippet_id, {})
+    if classify_state(stats_entry, _now(), policy) != "broken":
+        return False
+    span = _days_between(
+        stats_entry.get("first_failure_in_streak"),
+        stats_entry.get("last_failure"),
+    )
+    reason = (f"{stats_entry.get('consecutive_failures')} consecutive failures "
+              f"over {span}d since {stats_entry.get('first_failure_in_streak')}")
+    mark_deprecated(project_root, snippet_id, reason=reason)
+    return True
 
 
 def classify_state(entry, now_iso, policy=DEFAULT_POLICY):

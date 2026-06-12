@@ -47,7 +47,7 @@ args:
     description: Layer name (case-sensitive)
 example:
   layerName: "Default"
-expected: ["Main Camera", "Directional Light"]   # optional — see Validation Gate
+# optional: expected: "<string>" — see Validation Gate (only meaningful when Run returns a string)
 ---
 
 ```csharp
@@ -71,9 +71,9 @@ static List<string> Run(string layerName) {
 | `safety` | yes | `read-only` \| `mutates` (see Safety Classes) |
 | `args` | yes | list of `{name, type, description?, default?}`; an arg is optional iff it has a `default` |
 | `example` | yes | one example arg dict; covers all args without defaults; used by validation gate |
-| `expected` | no | opt-in: validation also asserts deep-equality of `Run(example)`'s return against this value |
+| `expected` | no | opt-in **string**: validation also compares the textual REPL result of `Run(example)` against this value. The exec service `ToString()`s the return value into `data.text` and never emits structured JSON, so deep-equality against JSON values is impossible by construction; snippets wanting structured assertions return a formatted string from `Run`. |
 
-Audit and stats fields (`created_at`, `verified_at`, `invocations`, `successes`, `failures`, `last_used`, `deprecated`, `supersedes`) are **not** in the snippet file — they live in `snippets-audit.json` / `snippets-stats.json` so reading a snippet is cheap and writing it doesn't churn git diffs every use.
+Audit and stats fields (`created_at`, `verified_at`, `invocations`, `successes`, `failures`, `last_used`, `deprecated`, `superseded_by`) are **not** in the snippet file — they live in `snippets-audit.json` / `snippets-stats.json` so reading a snippet is cheap and writing it doesn't churn git diffs every use.
 
 ### Body convention
 
@@ -183,7 +183,7 @@ Triggered by `add` and by `update --file`. Steps for a snippet with safety class
 3. **Execute** (only if `S == read-only`):
    - POST `cs exec <wrapped-submission>`.
    - Require `ok=true && exitCode=0`.
-   - If `expected` is present: deserialize Run's return value (from cs exec result) and assert deep-equality with `expected`. Mismatch → fail.
+   - If `expected` is present: compare the textual result (`data.text`, the `ToString()` of Run's return value) against the `expected` string. Mismatch → fail.
 4. **Refuse** (if `S == mutates`): require `--no-validate`. With it, write the file but mark `unverified: true` in audit and skip steps 3.
 5. **Persist**: on success, write body to `snippets~/<id>.md`; write audit entry with `created_at` / `verified_at` / `unverified` flag; initialize stats entry (zeros, `last_used = created_at`).
 6. **Fail-closed**: any failure prints (a) the rendered submission, (b) the `cs exec` response, (c) which step failed. No file is written.
@@ -256,7 +256,7 @@ For a snippet that has never been used, `last_used` is treated as equal to its `
 | State | Trigger | Default action |
 |-------|---------|----------------|
 | Cold | `last_used > 90d ago && successes < 3` | **informational only** — highlighted in `list --sort cold`; no auto-action |
-| Broken | `consecutive_failures >= 5 && (last_failure − first_failure_in_streak) >= 7d` | auto-deprecate; audit `reason: "5 consecutive failures over <span>d since <date>"` |
+| Broken | `consecutive_failures >= 5 && (last_failure − first_failure_in_streak) >= 7d` | auto-deprecate **at `use` time** when the qualifying Run-body failure is recorded (never from `prune`); audit `reason: "5 consecutive failures over <span>d since <date>"` |
 | Hot | `successes > 10 && last_used within 7d` | highlighted in `list --sort hot` (informational) |
 
 Auto-deprecation on the broken rule requires both **count** (5 strikes) and **time spread** (≥ 7 days between the streak's first and last failure). Transient flakes during a single bad-Unity-state session do not trip it.
