@@ -1746,7 +1746,11 @@ def cmd_snippets_doctor(root, args, agent_root):
         if passed:
             audit = load_audit(root)
             for sid in passed:
+                # A read-only snippet that just passed the gate is verified —
+                # clear the unverified flag too (e.g. one added with
+                # --no-validate), or list/doctor would keep flagging it.
                 audit["snippets"][sid]["verified_at"] = now_iso
+                audit["snippets"][sid]["unverified"] = False
             save_audit(root, audit)
         revalidated = {"passed": len(passed), "failed": failed}
 

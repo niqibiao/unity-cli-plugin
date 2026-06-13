@@ -42,12 +42,19 @@ def validate_snippet(snippet, code_runner, no_validate=False):
     if no_validate:
         return  # explicit skip even for read-only
 
-    submission = render_submission(
-        snippet_id=snippet["id"],
-        body=snippet["body"],
-        args_schema=snippet["args"],
-        arg_values=snippet["example"],
-    )
+    try:
+        submission = render_submission(
+            snippet_id=snippet["id"],
+            body=snippet["body"],
+            args_schema=snippet["args"],
+            arg_values=snippet["example"],
+        )
+    except ValueError as e:
+        # example/default values that don't match the declared arg types
+        # surface as ValueError from the renderer; turn them into a
+        # validation failure so add / update --file / doctor --revalidate
+        # emit an envelope instead of a traceback.
+        raise ValidationError(f"example does not match arg schema: {e}")
     if code_runner is None:
         raise ValidationError(
             "internal error: validate_snippet reached runner with code_runner=None"
