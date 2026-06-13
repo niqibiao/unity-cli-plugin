@@ -1345,18 +1345,24 @@ def cmd_snippets_update(root, args, agent_root):
                 args.as_json,
             )
             return 1
-        write_snippet_file(root, args.snippet_id, new_text)
 
+        # Check the audit entry BEFORE writing the body. An integrity-drift
+        # case (file present, audit entry gone) must not leave a half-updated
+        # snippet — a rewritten body with stale verified_at/unverified. Refuse
+        # up front (fail-closed) and point at doctor, which reports this as an
+        # orphan_file finding.
         audit = load_audit(root)
         e = audit["snippets"].get(args.snippet_id)
         if e is None:
             _print_envelope(
                 {"ok": False, "exitCode": 1,
                  "summary": f"audit entry missing for {args.snippet_id}; "
-                            f"snippet file written but audit not updated"},
+                            f"refusing to update (run `cs snippets doctor`)"},
                 args.as_json,
             )
             return 1
+
+        write_snippet_file(root, args.snippet_id, new_text)
         if not args.no_validate:
             e["verified_at"] = _now()
             e["unverified"] = False
