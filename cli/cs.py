@@ -1137,16 +1137,24 @@ def cmd_snippets_use(root, args, agent_root):
     # wraps transport exceptions into envelopes; verified empirically) and
     # must not poison the streak, or offline retries would auto-deprecate
     # perfectly good snippets.
+    recorded = False
     if response.get("ok") and response.get("exitCode", 0) == 0:
         record_success(root, args.snippet_id)
+        recorded = True
     elif response.get("type") != "system_error":
         record_failure(root, args.snippet_id)
+        recorded = True
         from cli.snippets.stats import auto_deprecate_if_broken
         if auto_deprecate_if_broken(root, args.snippet_id):
             print(f"warning: snippet {args.snippet_id!r} auto-deprecated "
                   f"after a qualifying failure streak "
                   f"(see `cs snippets stats --id {args.snippet_id}`)",
                   file=sys.stderr)
+
+    # use just wrote snippets-stats.json; keep it gitignored even on checkouts
+    # where setup never ran (committed snippets/audit, fresh clone).
+    if recorded:
+        _ensure_gitignore_entry(root)
 
     if args.as_json:
         json.dump(response, sys.stdout, ensure_ascii=False, indent=2)

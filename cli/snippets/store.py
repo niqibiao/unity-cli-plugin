@@ -167,6 +167,8 @@ def _validate(snip):
         raise SnippetParseError("args must be a list")
     seen_names = set()
     for spec in snip["args"]:
+        if not isinstance(spec, dict):
+            raise SnippetParseError(f"each arg must be a mapping, got {spec!r}")
         for k in ("name", "type"):
             if k not in spec:
                 raise SnippetParseError(f"arg missing {k}: {spec!r}")

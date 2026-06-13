@@ -7,8 +7,10 @@ import re
 
 def _float_lit(v):
     """Render a float literal, dropping the decimal point only when integral."""
-    if isinstance(v, bool):
-        raise ValueError("bool not accepted as float")
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        # null / list / dict would make float() raise TypeError; normalize to
+        # ValueError so callers (validate, use) surface a clean envelope.
+        raise ValueError(f"expected a number, got {v!r}")
     f = float(v)
     if f == int(f):
         return f"{int(f)}f"
