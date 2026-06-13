@@ -119,7 +119,17 @@ def _parse_scalar_or_inline(text):
     # JSON-shaped values (quoted strings, lists, objects) handle their own escaping
     # and don't get comment-stripped — `json.loads` rejects trailing garbage.
     if text.startswith("[") or text.startswith("{") or text.startswith('"'):
-        return json.loads(text)
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as e:
+            # Surface as SnippetParseError so write/maintenance paths (add,
+            # update --file, doctor) that only catch SnippetParseError around
+            # parse_snippet_file produce a clean envelope/finding instead of a
+            # raw traceback. Common cause: a trailing YAML comment after a
+            # JSON-shaped value.
+            raise SnippetParseError(
+                f"invalid JSON value in frontmatter: {text!r} ({e})"
+            )
     # For bare scalars, strip a trailing `# comment` if present.
     if "#" in text:
         # Naive: anything after the first ` #` is a comment.

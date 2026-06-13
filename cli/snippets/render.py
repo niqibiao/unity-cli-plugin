@@ -110,6 +110,32 @@ def _wrapper_class_name(snippet_id, body):
     return f"__Snip_{digest[:16]}"
 
 
+_RUN_DECL_RE = re.compile(
+    r"(?P<mod>\b(?:public|internal|private|protected)\s+)?"
+    r"(?P<static>\bstatic\s+)"
+    r"(?P<rest>[\w<>\[\],\s\.]+?\bRun\s*\()"
+)
+
+
+def _ensure_public_run(body):
+    """Promote a bare `static Run` to `public static Run`.
+
+    Snippets are authored with `static Run(...)` and no access modifier
+    (default private). In Roslyn scripting the wrapper class becomes a nested
+    type of the submission, and a nested type's private member is not
+    accessible from the enclosing submission under standard C# rules — so the
+    external call line `__Snip_x.Run(...)` would be a CS0122 error. Promoting
+    Run to public makes the call valid without relying on the service's
+    IgnoreAccessibility binder hack. Helpers stay private (Run reaches them
+    from inside the same class). Only the first `Run(` declaration is touched.
+    """
+    def repl(m):
+        if m.group("mod"):           # already has an explicit access modifier
+            return m.group(0)
+        return "public " + m.group("static") + m.group("rest")
+    return _RUN_DECL_RE.sub(repl, body, count=1)
+
+
 def render_submission(snippet_id, body, args_schema, arg_values):
     """Build the cs exec submission for a single snippet invocation.
 
@@ -138,6 +164,9 @@ def render_submission(snippet_id, body, args_schema, arg_values):
         rendered_args.append(render_literal(type_name, value))
 
     usings, body_no_usings = _split_usings(body)
+    body_no_usings = _ensure_public_run(body_no_usings)
+    # Hash uses the original body so the wrapper name stays stable regardless
+    # of the public promotion above.
     cls = _wrapper_class_name(snippet_id, body)
     parts = []
     parts.extend(usings)

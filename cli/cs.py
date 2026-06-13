@@ -426,6 +426,9 @@ def cmd_setup(root, args, agent_root=None):
                         _warn_version_mismatch(pkg_dir)
                 except Exception:
                     pass
+                # Existing installs return here without rewriting the manifest;
+                # still make sure the snippet-stats gitignore entry is present.
+                _ensure_gitignore_entry(root)
                 return 0
             # --update: remove and re-add to force Unity re-resolve
             print(f"Forcing re-resolve of {PACKAGE_NAME} ...")
@@ -1019,6 +1022,9 @@ def cmd_snippets_add(root, args, agent_root):
         )
         return 1
 
+    # `add` just initialized snippets-stats.json; ensure it is gitignored even
+    # on projects where `cs setup` was never re-run after this feature landed.
+    _ensure_gitignore_entry(root)
     _print_envelope(
         {"ok": True, "exitCode": 0,
          "summary": f"registered {args.snippet_id}"
