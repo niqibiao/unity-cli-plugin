@@ -166,6 +166,27 @@ class UseStatsTaxonomyTests(_BaseTmpProject):
         self.assertFalse(self._audit_entry()["deprecated"])
 
 
+class SearchEmptyLibraryTests(_BaseTmpProject):
+    def _run_search(self, query="anything"):
+        args = SimpleNamespace(query=query, top=5, as_json=True)
+        with redirect_stdout(io.StringIO()) as out:
+            rc = cs.cmd_snippets_search(self.root, args)
+        return rc, json.loads(out.getvalue())
+
+    def test_empty_library_returns_fast_path_marker(self):
+        rc, payload = self._run_search()
+        self.assertEqual(rc, 0)
+        self.assertTrue(payload["data"]["libraryEmpty"])
+        self.assertIn("empty", payload["summary"])
+
+    def test_non_empty_library_has_no_marker(self):
+        self._register()
+        rc, payload = self._run_search("count objects")
+        self.assertEqual(rc, 0)
+        self.assertNotIn("libraryEmpty", payload["data"])
+        self.assertEqual(payload["data"]["results"][0]["id"], SNIPPET_ID)
+
+
 class PruneSemanticsTests(_BaseTmpProject):
     def _run_prune(self, args):
         with redirect_stdout(io.StringIO()) as out:

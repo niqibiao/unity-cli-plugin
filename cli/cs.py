@@ -1215,11 +1215,29 @@ def cmd_snippets_search(root, args):
                                     parse_snippet_file)
     from cli.snippets.stats import load_audit
 
+    all_ids = list_snippet_ids(root)
+    if not all_ids:
+        # Empty-library fast path: tell the agent explicitly so it can skip
+        # further snippet lookups this session instead of paying the search
+        # tax on every non-trivial exec task.
+        result = {
+            "ok": True, "exitCode": 0,
+            "summary": "snippet library is empty — skip snippet lookup and "
+                       "go ad-hoc (cs exec); consider distilling afterwards",
+            "data": {"results": [], "libraryEmpty": True},
+        }
+        if args.as_json:
+            json.dump(result, sys.stdout, ensure_ascii=False, indent=2)
+            print()
+        else:
+            print(result["summary"])
+        return 0
+
     audit = load_audit(root)
     q = args.query.lower()
     q_terms = [t for t in q.split() if t]
     hits = []
-    for sid in list_snippet_ids(root):
+    for sid in all_ids:
         a = audit["snippets"].get(sid, {})
         if a.get("deprecated"):
             continue

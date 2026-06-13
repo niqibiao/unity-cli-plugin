@@ -21,6 +21,10 @@ Before writing ad-hoc `cs exec` for any non-trivial Unity automation:
 
 "Non-trivial" = >3 lines, or uses LINQ / reflection / AssetDatabase / multi-step.
 
+**Empty-library fast path:** if `search` returns `libraryEmpty: true`, skip step 2
+for the rest of the session and go ad-hoc directly — resume searching once you
+`add` the first snippet.
+
 **Never** `Read` or `ls` `.unity-cli/snippets~/` directly. Always go through the CLI.
 
 ## Workflow

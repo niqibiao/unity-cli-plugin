@@ -353,6 +353,24 @@ Operational independence (the agent actually following decision order) is enforc
 - **No snippet-renaming.** `id` is the primary key; renaming = deprecate-then-add-new with `--supersede`.
 - **No semantic correctness oracle.** Validation gate is a smoke test. Authors who want assertions use the optional `expected` frontmatter field; deeper testing is out of scope.
 
+## Adoption Checkpoint (benefit is falsifiable)
+
+The library's value depends on actual reuse, which `snippets-stats.json` measures
+for free. **Around 2026-09 (≈3 months after first ship), run `cs snippets stats`
+on the adopting project(s) and decide:**
+
+- If a healthy share of snippets show `successes >= 3`, the loop is paying for
+  itself — keep everything.
+- If most snippets sit at `successes < 3` (or the library never grew past a
+  couple of entries), the distill/reuse discipline is not happening: cut the
+  aging/prune/stats subsystem (~40% of the code) and keep only
+  `search / show / use / add / deprecate`, rather than maintaining speculative
+  machinery.
+
+The empty-library fast path in `search` keeps the cold-start cost to a single
+probe per session, so an unused library costs near-zero at runtime — the
+checkpoint exists to cap the *maintenance* cost.
+
 ## Deliverables
 
 | # | Change | Files |
