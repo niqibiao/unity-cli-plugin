@@ -127,7 +127,7 @@ transparent to the author:
 ┌───────────────────┐    render     ┌────────────────────────────────────────────┐
 │ using System.Linq; │  ─────────►   │ using System.Linq;                          │
 │ static string Run  │               │ static class __Snip_a1b2c3d4e5f60718 {      │
-│   (string l){...}  │               │     public static string Run(string l){...} │
+│   (string l){...}  │               │     static string Run(string l){...}        │
 └───────────────────┘               │ }                                            │
                                      │ __Snip_a1b2c3d4e5f60718.Run("Default")      │
    args (JSON)                       └────────────────────────────────────────────┘
@@ -136,11 +136,6 @@ transparent to the author:
                                         → different / edited snippet → different name
                                         → helpers stay scoped inside the wrapper class
 ```
-
-The CLI promotes the authored `static Run` to `public static Run` inside the
-wrapper so the external call line is valid standard C# (a nested type's private
-members aren't reachable from the enclosing submission). Authors never write the
-modifier themselves; helpers stay private.
 
 ### Type substitution
 
