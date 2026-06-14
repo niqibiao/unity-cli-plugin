@@ -113,10 +113,9 @@ clarification on the protocol:
 5. **`git tag vX.Y.Z`** locally; **never push without explicit user
    confirmation** (memory rule).
 
-The `release.yml` and `convert-codex.yml` workflows handle the rest:
-they read the matching CHANGELOG section, fall back to `--generate-notes`
-when no section is found, and create matching `vX.Y.Z` and `vX.Y.Z-codex`
-releases with proper titles.
+The `release.yml` workflow handles the rest: it reads the matching CHANGELOG
+section, falls back to `--generate-notes` when no section is found, and creates
+the `vX.Y.Z` release with a proper title.
 
 ## Development Notes
 

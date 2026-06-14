@@ -21,7 +21,6 @@ jobs:
         run: |
           TAG="${{ github.ref_name }}"
           VERSION="${TAG#v}"
-          VERSION="${VERSION%-codex}"
           if [ -f CHANGELOG.md ]; then
             awk -v ver="$VERSION" '
               /^## / { if (found) exit; if (index($0, "[" ver "]")) { found=1; next } }

@@ -2,13 +2,12 @@
 
 # unity-cli-plugin
 
-**Unity Editor 的 AI 编程代理插件 — 支持 Claude Code 和 Codex CLI**<br/>
+**Unity Editor 的 AI 编程代理插件 — 支持 Claude Code**<br/>
 **基于 [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)**
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Unity](https://img.shields.io/badge/Unity-2022.3%2B-black.svg?logo=unity)](https://unity.com/)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-blueviolet.svg?logo=anthropic)](https://claude.ai/code)
-[![Codex CLI](https://img.shields.io/badge/Codex_CLI-00A67E.svg?logo=openai)](https://github.com/niqibiao/unity-cli-plugin/tree/codex-plugin)
 
 40+ 命令覆盖场景编辑、组件、资产、截图、性能分析等。<br/>
 依赖 **[unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)** — 基于 Roslyn 的 Unity 交互式 C# REPL。
@@ -55,55 +54,6 @@ claude
 # 3. 验证
 > /unity-cli-status
 ```
-
-### 🚀 快速开始 — Codex CLI（实验性）
-
-> **注意：** Codex CLI 尚未正式支持第三方插件分发。以下步骤依赖本地工作区 marketplace，后续版本可能会有变化。
-
-**前置条件：** [Codex CLI](https://github.com/openai/codex)、Unity 2022.3+、Python 3.7+
-
-```bash
-# 1. 在 Unity 工程根目录启动 Codex
-cd /path/to/your/unity-project
-codex
-
-# 2. 告诉 Codex 克隆并安装插件：
-#    "克隆 https://github.com/niqibiao/unity-cli-plugin/tree/codex-plugin
-#     然后用当前目录运行 install.sh"
-
-# 3. 重启 Codex，查找并安装插件
-/plugins              # 找到 unity-cli-plugin → Install
-
-# 4. 再次重启 Codex，然后初始化 Unity 包
-$unity-cli-setup
-
-# 5. 验证
-$unity-cli-status
-```
-
-<details>
-<summary>手动安装 / 已有 marketplace</summary>
-
-```bash
-cd /path/to/your/unity-project
-git clone --depth=1 -b codex-plugin https://github.com/niqibiao/unity-cli-plugin.git plugins/unity-cli-plugin
-rm -rf plugins/unity-cli-plugin/.git
-```
-
-然后在 `.agents/plugins/marketplace.json` 中添加：
-
-```jsonc
-{
-  "name": "local-workspace",
-  "plugins": [{
-    "name": "unity-cli-plugin",
-    "source": { "source": "local", "path": "./plugins/unity-cli-plugin" },
-    "policy": { "installation": "INSTALLED_BY_DEFAULT", "authentication": "ON_INSTALL" },
-    "category": "Productivity"
-  }]
-}
-```
-</details>
 
 ### 💬 使用方式
 

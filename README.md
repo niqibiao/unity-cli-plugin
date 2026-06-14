@@ -2,13 +2,12 @@
 
 # unity-cli-plugin
 
-**AI coding agent plugin for Unity Editor — supports Claude Code & Codex CLI**<br/>
+**AI coding agent plugin for Unity Editor — supports Claude Code**<br/>
 **Powered by [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)**
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Unity](https://img.shields.io/badge/Unity-2022.3%2B-black.svg?logo=unity)](https://unity.com/)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-blueviolet.svg?logo=anthropic)](https://claude.ai/code)
-[![Codex CLI](https://img.shields.io/badge/Codex_CLI-00A67E.svg?logo=openai)](https://github.com/niqibiao/unity-cli-plugin/tree/codex-plugin)
 
 40+ commands for scene editing, components, assets, screenshots, profiling, and more.<br/>
 Depends on **[unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)** — a Roslyn-powered interactive C# REPL for Unity.
@@ -55,55 +54,6 @@ claude
 # 3. Verify
 > /unity-cli-status
 ```
-
-### 🚀 Quick Start — Codex CLI (Experimental)
-
-> **Note:** Codex CLI does not yet officially support third-party plugin distribution. The steps below rely on the local workspace marketplace, which may change in future releases.
-
-**Prerequisites:** [Codex CLI](https://github.com/openai/codex), Unity 2022.3+, Python 3.7+
-
-```bash
-# 1. Start Codex in your Unity project
-cd /path/to/your/unity-project
-codex
-
-# 2. Tell Codex to clone and install the plugin:
-#    "Clone https://github.com/niqibiao/unity-cli-plugin/tree/codex-plugin
-#     then run install.sh with the current directory"
-
-# 3. Restart Codex, find and install the plugin
-/plugins              # locate unity-cli-plugin → Install
-
-# 4. Restart Codex again, then initialize the Unity package
-$unity-cli-setup
-
-# 5. Verify
-$unity-cli-status
-```
-
-<details>
-<summary>Manual install / already have a marketplace</summary>
-
-```bash
-cd /path/to/your/unity-project
-git clone --depth=1 -b codex-plugin https://github.com/niqibiao/unity-cli-plugin.git plugins/unity-cli-plugin
-rm -rf plugins/unity-cli-plugin/.git
-```
-
-Then add to `.agents/plugins/marketplace.json`:
-
-```jsonc
-{
-  "name": "local-workspace",
-  "plugins": [{
-    "name": "unity-cli-plugin",
-    "source": { "source": "local", "path": "./plugins/unity-cli-plugin" },
-    "policy": { "installation": "INSTALLED_BY_DEFAULT", "authentication": "ON_INSTALL" },
-    "category": "Productivity"
-  }]
-}
-```
-</details>
 
 ### 💬 Usage
 
