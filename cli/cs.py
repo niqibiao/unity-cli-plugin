@@ -422,7 +422,7 @@ def _perform_copy(src, *, force):
 
 
 def cmd_install_cli(args):
-    rc, msg = _perform_copy(_CLI_DIR, force=getattr(args, "force", False))
+    rc, msg = _perform_copy(_CLI_DIR, force=args.force)
     print(msg, file=sys.stderr if rc else sys.stdout)
     return rc
 
@@ -430,23 +430,19 @@ def cmd_install_cli(args):
 def _maybe_self_refresh(argv):
     """Keep the stable $HOME copy in sync with its source — the whole handshake.
 
-    Two roles, selected by env flags (both are set when a stale copy re-execs the
-    source, so the order of these checks matters):
-      - `_UCP_REFRESH_DEST`: we ARE the source, re-exec'd by a stale copy →
-        refresh the copy now (nothing is running from it) and return so the
-        original command proceeds from current code.
-      - otherwise, running as the stale copy → delegate this command to the
-        source CLI as a child process, flagged so the source refreshes the copy
-        first. The refreshing process is therefore never executing from the copy
-        directory it swaps, which is what makes the overwrite safe on Windows.
+    When a stale copy detects its source changed, it re-execs the source CLI as a
+    child flagged with `_UCP_REFRESH_DEST`. That child refreshes the copy (nothing
+    is running from it — the refreshing process executes from the source, never the
+    copy directory it swaps, which is what makes the overwrite safe on Windows),
+    then returns so the original command proceeds from current code. The child
+    never re-delegates: it short-circuits on the flag, and the source has no
+    `.source.json` marker anyway.
 
     Silent and best-effort: a no-op when not the stable copy, when the source is
     gone, or already handed off; degrades to running the current copy on any
     error rather than failing the command."""
     if os.environ.get("_UCP_REFRESH_DEST"):
         _perform_copy(_CLI_DIR, force=True)
-        return
-    if os.environ.get("_UCP_SELFUPDATED"):
         return
     marker = Path(_CLI_DIR).parent / ".source.json"   # only the copy has this
     if not marker.is_file():
@@ -466,7 +462,7 @@ def _maybe_self_refresh(argv):
     try:
         proc = subprocess.run(
             [sys.executable, str(src_cs)] + list(argv),
-            env=dict(os.environ, _UCP_SELFUPDATED="1", _UCP_REFRESH_DEST="1"),
+            env=dict(os.environ, _UCP_REFRESH_DEST="1"),
         )
     except OSError:
         return  # degrade: fall through and run the (stale) copy
