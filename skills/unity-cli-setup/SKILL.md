@@ -1,0 +1,66 @@
+---
+name: unity-cli-setup
+description: >
+  Install the Unity C# Console package into the current Unity project and
+  bootstrap the cross-agent CLI. Use when setting up unity-cli for the first
+  time, when status reports the package is NOT FOUND, or when the user asks to
+  install / set up / 安装 the Unity CLI. Works in both Claude Code and Codex.
+---
+
+# Unity CLI Setup
+
+One-time setup: bootstrap the CLI to a stable path, then install the Unity
+package into the current project.
+
+## 1. Bootstrap the CLI (one-time)
+
+Copy the CLI to a stable, agent-agnostic location so every later command can use
+one fixed path. Run this **verbatim, without changing directory** — the `||`
+fallbacks cover the cases where the stable copy doesn't exist yet
+(`${CLAUDE_PLUGIN_ROOT}` is Claude Code; the relative path is a first run under
+Codex):
+
+```bash
+python "${CLAUDE_PLUGIN_ROOT}/cli/cs.py" install-cli || python "../../cli/cs.py" install-cli
+```
+
+(After a later plugin upgrade the stable copy refreshes itself automatically;
+this bootstrap is only needed the first time.)
+
+## 2. Install the Unity package
+
+Ask the user to choose an installation method:
+
+1. **git** (recommended) — writes the git URL to `manifest.json`; Unity resolves it on its own.
+2. **local** — clones the repo into the project (for development/debugging; uses an existing local package path if found, otherwise defaults to `Packages/`).
+
+Then run, from the now-stable path:
+
+```bash
+python "$HOME/.unity-cli-plugin/current/cli/cs.py" setup --project "$(pwd)" --method <local|git>
+```
+
+By default the package is pinned to the latest `vMAJOR.MINOR.*` tag matching the
+plugin version. Append `--no-pin` to install from HEAD instead. With
+`--method local`, the clone ends in detached HEAD at the pinned tag; if the user
+wants to develop in the clone, instruct them to `git checkout main` afterward.
+
+**If setup fails (non-zero exit), stop immediately.** Do not retry or attempt a
+manual git clone. Report the error and ask the user to resolve the underlying
+issue (network, proxy, git config) before retrying.
+
+**Version mismatch handling:** if the output contains `⚠ version mismatch`, do
+NOT just report it — ask the user whether to update the package now. If they
+confirm, re-run the setup command with `--update` appended.
+
+## 3. Verify
+
+After a successful run (no version mismatch), tell the user to:
+
+1. Open the Unity Editor for the target project.
+2. Wait for the package manager to resolve `com.zh1zh1.csharpconsole`.
+3. Confirm connectivity:
+
+```bash
+python "$HOME/.unity-cli-plugin/current/cli/cs.py" status --project "$(pwd)"
+```

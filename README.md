@@ -2,7 +2,7 @@
 
 # unity-cli-plugin
 
-**AI coding agent plugin for Unity Editor — supports Claude Code**<br/>
+**AI coding agent plugin for Unity Editor — supports Claude Code & Codex CLI**<br/>
 **Powered by [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)**
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
@@ -47,13 +47,35 @@ CLI commands exposed through Claude Code's skill system.
 claude plugin marketplace add niqibiao/unity-cli-plugin
 claude plugin install unity-cli-plugin
 
-# 2. Install the Unity package (inside your project)
+# 2. Install the Unity package (inside your project) — just ask Claude:
 claude
-> /unity-cli-setup
+> set up unity-cli
 
 # 3. Verify
-> /unity-cli-status
+> check unity-cli status
 ```
+
+### 🤖 Quick Start — Codex CLI
+
+The same bundle is dual-agent: all functionality ships as skills shared by both
+agents (no slash commands). After installing the plugin into Codex, drive setup
+through the `unity-cli-setup` skill.
+
+**Prerequisites:** [Codex CLI](https://github.com/openai/codex) 0.139+, Unity 2022.3+, Python 3.7+
+
+In a Codex session inside your Unity project, ask it to set up unity-cli. The
+`unity-cli-setup` skill bootstraps the CLI to a stable path, installs the Unity
+package, and verifies the connection:
+
+```bash
+# The unity-cli-setup skill bootstraps the CLI and installs the package; both
+# agents then invoke the one stable path — e.g. to verify the connection:
+python "$HOME/.unity-cli-plugin/current/cli/cs.py" status --project "$(pwd)"
+```
+
+The CLI is copied once to `$HOME/.unity-cli-plugin/current/cli/` so both agents
+invoke it by a single stable path. After upgrading the plugin the stable copy
+detects the change and re-copies itself automatically on the next command.
 
 ### 💬 Usage
 
@@ -68,16 +90,22 @@ Just tell Claude what you want:
 
 Claude picks the right command or writes C# code as needed.
 
-#### ⌨️ Slash Commands
+#### 🧩 Skills
 
+Everything is a skill — Claude triggers them automatically based on what you ask
+(works in both Claude Code and Codex):
 
-| Command                       | Description                                  |
+| Skill                         | Description                                  |
 | ----------------------------- | -------------------------------------------- |
-| `/unity-cli-setup`            | Install the Unity package                    |
-| `/unity-cli-status`           | Check package and service status             |
-| `/unity-cli-refresh`          | Trigger asset refresh / recompile            |
-| `/unity-cli-refresh-commands` | Refresh per-project custom command cache     |
-| `/unity-cli-sync-catalog`     | Audit built-in tables in SKILL.md vs live Editor (maintainer) |
+| `unity-cli-setup`             | Install the Unity package (cross-agent bootstrap) |
+| `unity-cli-status`            | Check package and service status             |
+| `unity-cli-refresh`           | Trigger asset refresh / recompile            |
+| `unity-cli-refresh-commands`  | Refresh per-project custom command cache     |
+| `unity-cli-sync-catalog`      | Audit built-in tables vs live Editor (maintainer) |
+| `unity-cli-command`           | Structured Unity Editor commands             |
+| `unity-cli-exec-code`         | Run raw C# in the Editor (fallback)          |
+| `unity-cli-snippets`          | Reusable C# snippet library                  |
+| `unity-cli-snippets-audit`    | Snippet library health audit                 |
 
 
 #### 💻 Direct CLI
@@ -280,7 +308,7 @@ Claude Code                      Unity Editor
 └──────────────────┘            └──────────────────────────┘
 ```
 
-- **Plugin layer**: Skills and slash commands invoked by Claude Code
+- **Plugin layer**: Skills invoked by Claude Code and Codex
 - **CLI layer**: Python dispatcher, serializes requests to JSON
 - **Unity layer**: [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole) — HTTP service, auto-discovered command handlers, Roslyn C# REPL
 
@@ -292,10 +320,10 @@ Auto-detects project root and service port. No manual configuration.
 | Problem                | Solution                                                                                   |
 | ---------------------- | ------------------------------------------------------------------------------------------ |
 | `service: UNREACHABLE` | Make sure Unity Editor is open with the project loaded                                     |
-| `package: NOT FOUND`   | Run `/unity-cli-setup` or check `Packages/manifest.json`                                   |
+| `package: NOT FOUND`   | Run the `unity-cli-setup` skill, or check `Packages/manifest.json`                         |
 | Port conflict          | Service auto-advances to the next free port. Check `Temp/CSharpConsole/refresh_state.json` |
 | Commands not found     | Ensure the package compiled successfully (no errors in Unity Console)                      |
-| Version mismatch       | Run `/unity-cli-status` to check version info. Update the package if protocol differs      |
+| Version mismatch       | Run the `unity-cli-status` skill to check version info. Update the package if protocol differs |
 
 
 ---

@@ -2,7 +2,7 @@
 
 # unity-cli-plugin
 
-**Unity Editor 的 AI 编程代理插件 — 支持 Claude Code**<br/>
+**Unity Editor 的 AI 编程代理插件 — 支持 Claude Code 与 Codex CLI**<br/>
 **基于 [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)**
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
@@ -47,13 +47,32 @@ Claude:  完成。10 个 Cube 已在半径 5 处创建，均已添加 Rigidbody 
 claude plugin marketplace add niqibiao/unity-cli-plugin
 claude plugin install unity-cli-plugin
 
-# 2. 安装 Unity 包（在项目目录下）
+# 2. 安装 Unity 包（在项目目录下）—— 直接让 Claude 做：
 claude
-> /unity-cli-setup
+> 安装 unity-cli
 
 # 3. 验证
-> /unity-cli-status
+> 查看 unity-cli 状态
 ```
+
+### 🤖 快速开始 — Codex CLI
+
+同一套插件是双 Agent 的：所有功能都以 Skill 形式提供，两个 Agent 共享（不再有斜杠命令）。在
+Codex 中安装插件后，通过 `unity-cli-setup` skill 完成安装。
+
+**前置条件：** [Codex CLI](https://github.com/openai/codex) 0.139+、Unity 2022.3+、Python 3.7+
+
+在 Unity 项目目录下的 Codex 会话中，让它安装 unity-cli。`unity-cli-setup` skill 会先把
+CLI 引导到一个稳定路径，再安装 Unity 包并验证连接：
+
+```bash
+# unity-cli-setup skill 会完成引导与安装；之后两个 Agent 都用这一条稳定路径，
+# 例如验证连接：
+python "$HOME/.unity-cli-plugin/current/cli/cs.py" status --project "$(pwd)"
+```
+
+CLI 会被复制到 `$HOME/.unity-cli-plugin/current/cli/`，两个 Agent 都用这一个稳定路径调用。
+插件升级后，稳定副本会在下一条命令时自动检测并重新复制，无需手动刷新。
 
 ### 💬 使用方式
 
@@ -68,16 +87,21 @@ claude
 
 Claude 会自动选择合适的命令，或在需要时编写 C# 代码。
 
-#### ⌨️ 斜杠命令
+#### 🧩 Skills
 
+所有功能都是 Skill —— Claude 会根据你的请求自动触发（Claude Code 和 Codex 通用）：
 
-| 命令                            | 说明              |
+| Skill                         | 说明              |
 | ----------------------------- | --------------- |
-| `/unity-cli-setup`            | 安装 Unity 包      |
-| `/unity-cli-status`           | 检查包和服务状态        |
-| `/unity-cli-refresh`          | 触发资产刷新 / 重编译    |
-| `/unity-cli-refresh-commands` | 刷新每项目自定义命令缓存    |
-| `/unity-cli-sync-catalog`     | 审计 SKILL.md 的内置命令表与实时 Editor 是否一致（维护者用） |
+| `unity-cli-setup`            | 安装 Unity 包（跨 Agent 引导） |
+| `unity-cli-status`           | 检查包和服务状态        |
+| `unity-cli-refresh`          | 触发资产刷新 / 重编译    |
+| `unity-cli-refresh-commands` | 刷新每项目自定义命令缓存    |
+| `unity-cli-sync-catalog`     | 审计内置命令表与实时 Editor 是否一致（维护者用） |
+| `unity-cli-command`          | 结构化 Unity 编辑器命令 |
+| `unity-cli-exec-code`        | 在编辑器中执行原始 C#（兜底） |
+| `unity-cli-snippets`         | 可复用 C# 片段库      |
+| `unity-cli-snippets-audit`   | 片段库健康审计         |
 
 
 #### 💻 直接使用 CLI
@@ -280,7 +304,7 @@ Claude Code                      Unity Editor
 └──────────────────┘            └──────────────────────────┘
 ```
 
-- **插件层**：Claude Code 调用的 Skills 和斜杠命令
+- **插件层**：Claude Code 和 Codex 调用的 Skills
 - **CLI 层**：Python 调度器，将请求序列化为 JSON
 - **Unity 层**：[unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole) — HTTP 服务，自动发现命令处理器，Roslyn C# REPL
 
@@ -292,10 +316,10 @@ Claude Code                      Unity Editor
 | 问题                     | 解决方案                                                       |
 | ---------------------- | ---------------------------------------------------------- |
 | `service: UNREACHABLE` | 确保 Unity 编辑器已打开并加载了项目                                      |
-| `package: NOT FOUND`   | 运行 `/unity-cli-setup` 或检查 `Packages/manifest.json`         |
+| `package: NOT FOUND`   | 运行 `unity-cli-setup` skill，或检查 `Packages/manifest.json`     |
 | 端口冲突                   | 服务会自动切换到下一个可用端口，查看 `Temp/CSharpConsole/refresh_state.json` |
 | 找不到命令                  | 确保包编译成功（Unity Console 中无报错）                                |
-| 版本不匹配                  | 运行 `/unity-cli-status` 查看版本信息，如协议版本不同请更新包                  |
+| 版本不匹配                  | 运行 `unity-cli-status` skill 查看版本信息，如协议版本不同请更新包             |
 
 
 ---
