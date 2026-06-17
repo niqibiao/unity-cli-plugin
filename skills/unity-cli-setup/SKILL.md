@@ -9,36 +9,24 @@ description: >
 
 # Unity CLI Setup
 
-One-time setup: bootstrap the CLI to a stable path, then install the Unity
-package into the current project.
+One-time setup: install the Unity package and bootstrap the stable CLI path.
 
-## 1. Bootstrap the CLI (one-time)
-
-Copy the CLI to a stable, agent-agnostic location so every later command can use
-one fixed path. Run this **verbatim, without changing directory** — the `||`
-fallbacks cover the cases where the stable copy doesn't exist yet
-(`${CLAUDE_PLUGIN_ROOT}` is Claude Code; the relative path is a first run under
-Codex):
-
-```bash
-python "${CLAUDE_PLUGIN_ROOT}/cli/cs.py" install-cli || python "../../cli/cs.py" install-cli
-```
-
-(After a later plugin upgrade the stable copy refreshes itself automatically;
-this bootstrap is only needed the first time.)
-
-## 2. Install the Unity package
+## 1. Install the Unity package
 
 Ask the user to choose an installation method:
 
 1. **git** (recommended) — writes the git URL to `manifest.json`; Unity resolves it on its own.
 2. **local** — clones the repo into the project (for development/debugging; uses an existing local package path if found, otherwise defaults to `Packages/`).
 
-Then run, from the now-stable path:
+Run **verbatim, without changing directory** — the `||` fallback covers a first
+run under Codex where `${CLAUDE_PLUGIN_ROOT}` is unavailable:
 
 ```bash
-python "$HOME/.unity-cli-plugin/current/cli/cs.py" setup --project "$(pwd)" --method <local|git>
+python "${CLAUDE_PLUGIN_ROOT}/cli/cs.py" setup --project "$(pwd)" --method <local|git> || python "../../cli/cs.py" setup --project "$(pwd)" --method <local|git>
 ```
+
+`setup` bootstraps the stable CLI path (`$HOME/.unity-cli-plugin/current/`) automatically.
+All subsequent commands use that stable path.
 
 By default the package is pinned to the latest `vMAJOR.MINOR.*` tag matching the
 plugin version. Append `--no-pin` to install from HEAD instead. With
@@ -53,7 +41,7 @@ issue (network, proxy, git config) before retrying.
 NOT just report it — ask the user whether to update the package now. If they
 confirm, re-run the setup command with `--update` appended.
 
-## 3. Verify
+## 2. Verify
 
 After a successful run (no version mismatch), tell the user to:
 

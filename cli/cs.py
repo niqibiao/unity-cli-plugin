@@ -421,15 +421,6 @@ def _perform_copy(src, *, force):
     return 0, f"Installed CLI to {dest} (version {version})"
 
 
-def cmd_install_cli(args):
-    """Copy this CLI to a fixed $HOME location so any agent can invoke it by a
-    single stable path — `$HOME/.unity-cli-plugin/current/cli/cs.py` — no matter
-    where (or how read-only) the plugin itself is installed."""
-    rc, msg = _perform_copy(_CLI_DIR, force=getattr(args, "force", False))
-    print(msg, file=sys.stderr if rc else sys.stdout)
-    return rc
-
-
 def _maybe_self_refresh(argv):
     """Keep the stable $HOME copy in sync with its source — the whole handshake.
 
@@ -1984,11 +1975,7 @@ def cmd_snippets_show(root, args):
 # ── Main ────────────────────────────────────────────────────────────────
 
 def main():
-    # Keep the stable $HOME copy in sync with its source before anything else
-    # (a no-op unless we're that copy). Skipped for `install-cli`, which manages
-    # the copy itself.
-    if not (len(sys.argv) > 1 and sys.argv[1] == "install-cli"):
-        _maybe_self_refresh(sys.argv[1:])
+    _maybe_self_refresh(sys.argv[1:])
 
     # Shared flags available on every subcommand.
     # Use SUPPRESS so subparser parses don't overwrite values supplied to the
@@ -2023,14 +2010,6 @@ def main():
                           help="Update existing installation instead of skipping")
     sp_setup.add_argument("--no-pin", dest="no_pin", action="store_true",
                           help="Install from HEAD of the default branch instead of pinning to a tag matching the plugin major.minor")
-
-    # Internal bootstrap, hidden from --help (no `help=` → no entry in the command
-    # list; the metavar above hides it from the usage line too). Copies the CLI to
-    # the stable $HOME path. Users never invoke it directly — `setup` auto-runs it
-    # and the `unity-cli-setup` skill is the one documented bootstrap entry point.
-    sp_install = sub.add_parser("install-cli", parents=[shared])
-    sp_install.add_argument("--force", action="store_true",
-                            help="Reinstall even if already up to date")
 
     sub.add_parser("status", parents=[shared], help="Package + connection status")
 
@@ -2204,8 +2183,6 @@ def main():
             args.wait = 600
 
     # Pre-setup commands
-    if args.cmd == "install-cli":
-        sys.exit(cmd_install_cli(args))
     if args.cmd == "setup":
         rc, _ = _perform_copy(_CLI_DIR, force=False)
         if rc != 0:
