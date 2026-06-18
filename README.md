@@ -77,6 +77,54 @@ The CLI is copied once to `$HOME/.unity-cli-plugin/current/cli/` so both agents
 invoke it by a single stable path. After upgrading the plugin the stable copy
 detects the change and re-copies itself automatically on the next command.
 
+### 🔒 Team Version Management
+
+Pin one version across the whole team and roll everyone forward by editing
+committed files. There are **three version knobs** — keep them at the same
+`major.minor` (patch numbers may differ per repo) to avoid `⚠ version mismatch`.
+
+**1. Claude Code plugin** — commit to `.claude/settings.json`:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "unity-cli-plugin": {
+      "source": { "source": "github", "repo": "niqibiao/unity-cli-plugin", "ref": "v1.5.1" },
+      "autoUpdate": true
+    }
+  },
+  "enabledPlugins": { "unity-cli-plugin@unity-cli-plugin": true }
+}
+```
+
+`source.ref` (tag/commit) locks the version; `autoUpdate: true` re-syncs each member to the committed `ref` at session start (self-heals drift, no manual `/plugin`). The version goes in `source.ref`, **not** the `enabledPlugins` key — keys are `plugin-id@marketplace-id` with no version syntax.
+
+**2. Codex CLI plugin** — commit to `.agents/plugins/marketplace.json`:
+
+```json
+{
+  "name": "unity-cli-pinned",
+  "plugins": [
+    {
+      "name": "unity-cli-plugin",
+      "source": { "source": "url", "url": "https://github.com/niqibiao/unity-cli-plugin.git", "ref": "v1.5.1" }
+    }
+  ]
+}
+```
+
+The `url` source's `ref` (tag) or `sha` (commit) pins the version. Codex has **no `autoUpdate` equivalent**: after cloning, each member installs + reloads once (`/plugin install`, then `/reload-plugins`, or restart Codex). A later `ref` bump needs `codex plugin marketplace upgrade` + reload.
+
+**3. Unity package** — pinned in `Packages/manifest.json` (managed by `cs setup`):
+
+```json
+{ "dependencies": { "com.zh1zh1.csharpconsole": "https://github.com/niqibiao/unity-csharpconsole.git#v1.5.0" } }
+```
+
+**To roll the team forward:** bump each pin to its repo's new tag (keep the plugin and package at the same `major.minor`), commit, and push. On their next session, Claude members auto-update; Codex members run one `marketplace upgrade` + reload; Unity re-resolves the package when the Editor opens.
+
+> Claude (`autoUpdate`) is fully transparent. Codex pins the source but does **not** auto-install on clone — the first install and each upgrade need a manual reload/restart.
+
 ### 💬 Usage
 
 Just tell Claude what you want:

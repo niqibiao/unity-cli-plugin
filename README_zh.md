@@ -74,6 +74,53 @@ python "$HOME/.unity-cli-plugin/current/cli/cs.py" status --project "$(pwd)"
 CLI 会被复制到 `$HOME/.unity-cli-plugin/current/cli/`，两个 Agent 都用这一个稳定路径调用。
 插件升级后，稳定副本会在下一条命令时自动检测并重新复制，无需手动刷新。
 
+### 🔒 团队版本管理
+
+把整个团队锁定到同一版本，并通过改提交进仓库的文件来统一升级所有人。一共**三个版本旋钮**——
+保持它们在同一 `major.minor`（patch 号可因仓库而异），避免 `⚠ version mismatch`。
+
+**1. Claude Code 插件** —— 提交到 `.claude/settings.json`：
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "unity-cli-plugin": {
+      "source": { "source": "github", "repo": "niqibiao/unity-cli-plugin", "ref": "v1.5.1" },
+      "autoUpdate": true
+    }
+  },
+  "enabledPlugins": { "unity-cli-plugin@unity-cli-plugin": true }
+}
+```
+
+`source.ref`（tag/commit）锁死版本；`autoUpdate: true` 在每次会话启动把成员对齐到提交的 `ref`（自动修复漂移，无需手动 `/plugin`）。版本写在 `source.ref`，**不是** `enabledPlugins` 的 key——key 是 `plugin-id@marketplace-id`，不支持版本语法。
+
+**2. Codex CLI 插件** —— 提交到 `.agents/plugins/marketplace.json`：
+
+```json
+{
+  "name": "unity-cli-pinned",
+  "plugins": [
+    {
+      "name": "unity-cli-plugin",
+      "source": { "source": "url", "url": "https://github.com/niqibiao/unity-cli-plugin.git", "ref": "v1.5.1" }
+    }
+  ]
+}
+```
+
+`url` 源的 `ref`（tag）或 `sha`（commit）锁死版本。Codex **没有 `autoUpdate` 等价物**：clone 后每人首次要装一次 + reload（`/plugin install`，再 `/reload-plugins`，或重启 Codex）。之后 bump `ref` 需要 `codex plugin marketplace upgrade` + reload。
+
+**3. Unity 包** —— pin 在 `Packages/manifest.json`（由 `cs setup` 管理）：
+
+```json
+{ "dependencies": { "com.zh1zh1.csharpconsole": "https://github.com/niqibiao/unity-csharpconsole.git#v1.5.0" } }
+```
+
+**统一升级团队：** 把各处 pin 改成对应仓库的新 tag（插件与包保持同一 major.minor），提交并推送。成员下次开会话时：Claude 自动更新；Codex 跑一次 `marketplace upgrade` + reload；Unity 在编辑器打开时重新 resolve 包。
+
+> Claude（`autoUpdate`）完全无感。Codex 只锁源、**不会** clone 即自动安装——首次安装和每次升级都要手动 reload/重启。
+
 ### 💬 使用方式
 
 直接告诉 Claude 你想做什么：

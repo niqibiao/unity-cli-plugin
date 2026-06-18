@@ -11,6 +11,8 @@ the section matching the pushed tag (without the leading `v`) as release notes.
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-06-18
+
 ### Added
 
 - Dual-agent support (Claude Code + Codex CLI) from a single bundle. Skills now
