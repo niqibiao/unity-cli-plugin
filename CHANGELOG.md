@@ -40,6 +40,10 @@ the section matching the pushed tag (without the leading `v`) as release notes.
   rather than the project's old exact pin — so `setup --update` after a plugin
   upgrade actually re-pins the project (and resolves the new package tag) instead
   of being trapped on the old version. Non-setup commands still honor the pin.
+- The shim now resolves the Unity project root (mirroring `find_project_root`)
+  before reading the per-project pin, so a `--project` pointing at a subdirectory
+  (e.g. `Assets/`) or at a parent that contains the project still finds the pin
+  `setup` wrote at the root — instead of missing it and dispatching `.pending`/newest.
 
 ## [1.5.2] - 2026-06-18
 

@@ -379,6 +379,30 @@ def _project_from_argv(argv):
     return os.getcwd()
 
 
+def _is_unity_root(d):
+    return (d / "Assets").is_dir() and (d / "ProjectSettings").is_dir()
+
+
+def _unity_root(project):
+    # Mirror cs.py's find_project_root so the pin is read from the same place
+    # setup writes it (the Unity root), even when --project is a subdir (e.g.
+    # Assets/) or a parent that contains the project. Falls back to the raw path.
+    try:
+        p = Path(project).resolve()
+        if _is_unity_root(p):
+            return p
+        if p.is_dir():
+            for d in sorted(p.iterdir()):
+                if d.is_dir() and _is_unity_root(d):
+                    return d
+        for parent in p.parents:
+            if _is_unity_root(parent):
+                return parent
+        return p
+    except OSError:
+        return Path(project)
+
+
 def _entries():
     if not _STORE.is_dir():
         return {}
@@ -400,7 +424,7 @@ def _resolve(project, prefer_pending=False):
         return entries[pending]
     want = None
     try:
-        want = json.loads((Path(project) / ".unity-cli" / "cli.json").read_text("utf-8")).get("version")
+        want = json.loads((_unity_root(project) / ".unity-cli" / "cli.json").read_text("utf-8")).get("version")
     except (OSError, ValueError, AttributeError):
         want = None
     if want and want in entries:
