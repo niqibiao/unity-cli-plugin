@@ -11,6 +11,31 @@ the section matching the pushed tag (without the leading `v`) as release notes.
 
 ## [Unreleased]
 
+### Changed
+
+- **Version-namespaced CLI store + dispatch shim.** The stable cross-agent path
+  (`$HOME/.unity-cli-plugin/current/cli/cs.py`) is now a tiny dispatch shim
+  instead of one full copy of the CLI. Each plugin version is deposited under
+  `$HOME/.unity-cli-plugin/store/<version>/cli`, and on every call the shim
+  resolves which version the current project wants — its `.unity-cli/cli.json`
+  pin (written by `setup`), else the major.minor match, else the just-bootstrapped
+  version, else the newest — and runs it in-process via `runpy`. This lets
+  multiple plugin versions coexist on one machine; previously every version copied
+  into the same fixed directory, so two projects needing different versions
+  clobbered each other.
+
+### Added
+
+- `cs install-cli --gc` prunes redundant store versions, keeping the newest patch
+  of each major.minor line plus the just-bootstrapped (`.pending`) version.
+
+### Fixed
+
+- Self-refresh no longer hijacks a pinned older store version onto a newer source.
+  Store entries are immutable per-version snapshots: a `store/<version>` entry now
+  re-syncs from its source only while the source is still that same version with
+  changed content (the dev-edit loop), never across versions.
+
 ## [1.5.2] - 2026-06-18
 
 ### Fixed
