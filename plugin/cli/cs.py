@@ -688,13 +688,20 @@ def _maybe_self_refresh(argv):
 
 
 def cmd_setup(root, args, agent_root=None):
+    """Install/update the Unity package in the project manifest.
+
+    Returns (rc, installed): installed is True only when the package was actually
+    written / cloned / updated, and False for the "already installed" no-op — the
+    caller pins the project to the running CLI only when installed is True, so a
+    no-op setup after a plugin upgrade can't strand the project on a mismatched
+    protocol."""
     if root is None:
         print("Error: no Unity project found. Use --project to specify the path.", file=sys.stderr)
-        return 1
+        return 1, False
     manifest = root / "Packages" / "manifest.json"
     if not manifest.exists():
         print(f"Error: {manifest} not found.", file=sys.stderr)
-        return 1
+        return 1, False
 
     data = json.loads(manifest.read_text("utf-8"))
     deps = data.setdefault("dependencies", {})
@@ -747,9 +754,9 @@ def cmd_setup(root, args, agent_root=None):
                 else:
                     rc = _pull_local(local_dir)
                 if rc != 0:
-                    return rc
+                    return rc, False
                 _warn_version_mismatch(local_dir)
-                return 0
+                return 0, True
             # Directory exists but manifest points elsewhere (e.g. git) — update below
         else:
             # Remove incomplete clone leftovers before retrying
@@ -761,7 +768,7 @@ def cmd_setup(root, args, agent_root=None):
             clone_url = raw_source.split("#", 1)[0]
             rc = _clone_with_progress(clone_url, local_dir, tag=target_tag)
             if rc != 0:
-                return 1
+                return 1, False
 
         dep_value = dep_value_local
     else:
@@ -778,7 +785,7 @@ def cmd_setup(root, args, agent_root=None):
                 # Existing installs return here without rewriting the manifest;
                 # still make sure the snippet-stats gitignore entry is present.
                 _ensure_gitignore_entry(root)
-                return 0
+                return 0, False  # no-op: package unchanged → caller must not re-pin
             # --update: remove and re-add to force Unity re-resolve
             print(f"Forcing re-resolve of {PACKAGE_NAME} ...")
             del deps[PACKAGE_NAME]
@@ -793,7 +800,7 @@ def cmd_setup(root, args, agent_root=None):
     if method == "local":
         save_pkg_path(agent_root, local_dir)
     print("Open Unity Editor to resolve the package, then run: cs status")
-    return 0
+    return 0, True
 
 
 def _cmd_status_json(root, args, agent_root=None):
@@ -2416,9 +2423,13 @@ def main():
         copy_rc, _ = _perform_copy(_CLI_DIR, force=False)
         if copy_rc != 0:
             print("Warning: failed to install stable CLI copy — skills may invoke outdated code.", file=sys.stderr)
-        rc = cmd_setup(root, args, agent_root)
-        if rc == 0 and root is not None:
-            # Pin this project to the version that set it up; consume the pending hint.
+        rc, installed = cmd_setup(root, args, agent_root)
+        # Pin only when setup actually installed/updated the package. The "already
+        # installed" no-op leaves the package — and thus the protocol-aligned CLI
+        # version — unchanged, so pinning to the running CLI here would strand the
+        # project on a mismatched CLI after a plugin upgrade (e.g. when the user
+        # declines the update prompt). Leave .pending for a later real update.
+        if rc == 0 and installed and root is not None:
             _write_project_pin(root)
             try:
                 _PENDING_FILE.unlink()

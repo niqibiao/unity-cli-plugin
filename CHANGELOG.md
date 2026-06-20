@@ -44,6 +44,11 @@ the section matching the pushed tag (without the leading `v`) as release notes.
   before reading the per-project pin, so a `--project` pointing at a subdirectory
   (e.g. `Assets/`) or at a parent that contains the project still finds the pin
   `setup` wrote at the root — instead of missing it and dispatching `.pending`/newest.
+- `cs setup` no longer pins the project on the "already installed" no-op. The pin
+  (and `.pending` consumption) now happens only when setup actually installs or
+  updates the package, so running setup after a plugin upgrade without `--update`
+  (or declining the mismatch prompt) no longer strands the project on the newer CLI
+  while Unity still has the old package/protocol.
 
 ## [1.5.2] - 2026-06-18
 
