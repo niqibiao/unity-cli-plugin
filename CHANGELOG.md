@@ -35,6 +35,11 @@ the section matching the pushed tag (without the leading `v`) as release notes.
   Store entries are immutable per-version snapshots: a `store/<version>` entry now
   re-syncs from its source only while the source is still that same version with
   changed content (the dev-edit loop), never across versions.
+- `setup` can upgrade an already-pinned project again. When a newer version was
+  just bootstrapped (`.pending`), the shim now dispatches `setup` to that version
+  rather than the project's old exact pin — so `setup --update` after a plugin
+  upgrade actually re-pins the project (and resolves the new package tag) instead
+  of being trapped on the old version. Non-setup commands still honor the pin.
 
 ## [1.5.2] - 2026-06-18
 
