@@ -460,10 +460,17 @@ def _resolve(project, prefer_pending=False):
 
 def main():
     argv = sys.argv[1:]
-    # Only the `setup` subcommand is the re-pinning op that may prefer a freshly
-    # bootstrapped version; every other command honors the project pin. Parse the
-    # real subcommand so e.g. `snippets search setup` is NOT treated as setup.
-    target = _resolve(_project_from_argv(argv), prefer_pending=(_subcommand(argv) == "setup"))
+    sub = _subcommand(argv)
+    if sub == "install-cli":
+        # Store-level maintenance (e.g. install-cli --gc): run the newest CLI,
+        # never a project pin — an old pinned entry may not support newer flags.
+        entries = _entries()
+        target = entries[max(entries, key=_semver)] if entries else None
+    else:
+        # Only `setup` is the re-pinning op that may prefer a freshly bootstrapped
+        # version; every other command honors the project pin. Parse the real
+        # subcommand so e.g. `snippets search setup` is NOT treated as setup.
+        target = _resolve(_project_from_argv(argv), prefer_pending=(sub == "setup"))
     if target is None:
         print("unity-cli: no CLI installed in the store. Run the unity-cli-setup skill first.",
               file=sys.stderr)
@@ -2447,13 +2454,13 @@ def main():
         # installed" no-op leaves the package — and thus the protocol-aligned CLI
         # version — unchanged, so pinning to the running CLI here would strand the
         # project on a mismatched CLI after a plugin upgrade (e.g. when the user
-        # declines the update prompt). Leave .pending for a later real update.
+        # declines the update prompt).
         if rc == 0 and installed and root is not None:
             _write_project_pin(root)
-            try:
-                _PENDING_FILE.unlink()
-            except OSError:
-                pass
+        # .pending is intentionally NOT consumed here: on a machine with several
+        # projects pinned to an older version, each project's setup must still
+        # prefer the freshly bootstrapped version. .pending is overwritten by the
+        # next install-cli, so it always names the most recently bootstrapped one.
         sys.exit(rc)
     if args.cmd == "status":
         sys.exit(cmd_status(root, args, agent_root))
