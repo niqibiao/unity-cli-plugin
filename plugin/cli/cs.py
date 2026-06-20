@@ -540,7 +540,52 @@ def _perform_copy(src, *, force):
     return 0, f"Installed CLI to {dest} (version {version})"
 
 
+def _gc_store():
+    """Prune redundant versions from the store, keeping only the newest patch of
+    each major.minor line plus the .pending version. Safe because the shim
+    resolves any pin by exact match → major.minor fallback: removing an older
+    patch (e.g. 1.5.1 when 1.5.2 is present) just routes a 1.5.x pin to 1.5.2,
+    which is protocol-equivalent (alignment is by major.minor). Returns
+    (removed, kept) as sorted version lists."""
+    import shutil
+    from cli.version_check import parse_semver
+    if not _STORE_ROOT.is_dir():
+        return [], []
+    versions = [p.name for p in _STORE_ROOT.iterdir() if (p / "cli" / "cs.py").is_file()]
+    try:
+        pending = _PENDING_FILE.read_text("utf-8").strip()
+    except OSError:
+        pending = None
+    newest = {}  # (major, minor) -> (version_str, semver_tuple)
+    for v in versions:
+        sv = parse_semver(v) or (0, 0, 0)
+        line = (sv[0], sv[1])
+        if line not in newest or sv > newest[line][1]:
+            newest[line] = (v, sv)
+    kept = {pair[0] for pair in newest.values()}
+    if pending in versions:
+        kept.add(pending)
+    removed = []
+    for v in versions:
+        if v in kept:
+            continue
+        try:
+            shutil.rmtree(_STORE_ROOT / v)
+            removed.append(v)
+        except OSError:
+            pass
+    return sorted(removed), sorted(kept)
+
+
 def cmd_install_cli(args):
+    if getattr(args, "gc", False):
+        removed, kept = _gc_store()
+        if removed:
+            print(f"Pruned {len(removed)} redundant store version(s): {', '.join(removed)}")
+        else:
+            print("Store already minimal — nothing to prune.")
+        print(f"Kept: {', '.join(kept) if kept else '(none)'}")
+        return 0
     rc, msg = _perform_copy(_CLI_DIR, force=args.force)
     if rc == 0:
         # Record the freshly bootstrapped version so the next `setup` pins the
@@ -555,7 +600,11 @@ def cmd_install_cli(args):
 
 
 def _maybe_self_refresh(argv):
-    """Keep the stable $HOME copy in sync with its source — the whole handshake.
+    """Keep a store entry in sync with its source — but only within its own
+    version. A store/<version> copy refreshes from its recorded source only when
+    the source is still that same version with changed content (a dev edit); once
+    the source moves to a new version, this entry is a final snapshot and is left
+    untouched (see the version guard below).
 
     When a stale copy detects its source changed, it re-execs the source CLI as a
     child flagged with `_UCP_REFRESH_DEST`. That child refreshes the copy (nothing
@@ -582,8 +631,16 @@ def _maybe_self_refresh(argv):
     if not src_cs.is_file():
         return  # source moved/removed (e.g. versioned cache pruned) — can't refresh here
     src_version = get_plugin_version(src_cs.parent)
-    if src_version == info.get("version") and _cli_fingerprint(src_cs.parent, version=src_version) == info.get("fingerprint"):
-        return  # already up to date
+    if src_version != info.get("version"):
+        # Source is now a DIFFERENT version than this store entry. Store entries
+        # are immutable per-version snapshots; refreshing across versions would
+        # delegate to the source CLI and hijack a project pinned to this version
+        # onto whatever the source happens to be. The new version lands in its
+        # own store/<version> via install-cli/setup — leave this one alone.
+        return
+    if _cli_fingerprint(src_cs.parent, version=src_version) == info.get("fingerprint"):
+        return  # already up to date (same version, unchanged content)
+    # Same version, content changed (dev edit) → refresh this entry in place.
     # Delegate to the source (execve would be cleaner but segfaults under Windows
     # Python, so use a child process and exit with its status).
     try:
@@ -2145,6 +2202,7 @@ def main():
     # means argparse skips it in the subcommand listing entirely.
     sp_install = sub.add_parser("install-cli", parents=[shared])
     sp_install.add_argument("--force", action="store_true", help=SUPPRESS)
+    sp_install.add_argument("--gc", action="store_true", help=SUPPRESS)
 
     sub.add_parser("status", parents=[shared], help="Package + connection status")
 
