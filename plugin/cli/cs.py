@@ -578,8 +578,9 @@ def _write_project_pin(root, target_tag=None):
     instead, so the shim's `_optimal` fallback runs a compatible store CLI once
     Unity resolves the package. An unknown tag (HEAD / no-pin install) is treated
     as aligned. Best-effort."""
+    running = get_plugin_version(_CLI_DIR)
     pin_file = Path(root) / ".unity-cli" / "cli.json"
-    if target_tag and not is_aligned(get_plugin_version(_CLI_DIR), target_tag):
+    if target_tag and not is_aligned(running, target_tag):
         try:
             pin_file.unlink()
         except OSError:
@@ -588,7 +589,7 @@ def _write_project_pin(root, target_tag=None):
     try:
         pin_file.parent.mkdir(parents=True, exist_ok=True)
         pin_file.write_text(
-            json.dumps({"version": get_plugin_version(_CLI_DIR)}, ensure_ascii=False, indent=2) + "\n",
+            json.dumps({"version": running}, ensure_ascii=False, indent=2) + "\n",
             "utf-8")
     except OSError:
         pass
@@ -730,8 +731,8 @@ def _maybe_self_refresh(argv, maintenance=False):
     # Delegate to the source: it deposits its version into store/<src_version> and
     # runs the command as that version. Same-version → a dev-edit refresh in place;
     # cross-version under `setup` → picks up a newer source so the upgrade takes.
-    # Delegate to the source (execve would be cleaner but segfaults under Windows
-    # Python, so use a child process and exit with its status).
+    # (execve would be cleaner but segfaults under Windows Python, so use a child
+    # process and exit with its status.)
     try:
         proc = subprocess.run(
             [sys.executable, str(src_cs)] + list(argv),
