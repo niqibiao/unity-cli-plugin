@@ -46,7 +46,7 @@ the section matching the pushed tag (without the leading `v`) as release notes.
   regressed into pasting a raw `cs.py status` one-liner during the command→skill
   refactor). Added guardrails: the agent no longer over-claims service
   reachability (`status` is the check, not a guarantee) and no longer invents CLI
-  subcommands (raw C# is `cs exec`; there is no `cs run` — run `cs list-commands`
+  subcommands (raw C# is `cs exec`; there is no `cs run` — check `cs --help`
   when unsure).
 
 ## [1.5.2] - 2026-06-18

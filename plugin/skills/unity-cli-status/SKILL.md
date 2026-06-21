@@ -35,4 +35,5 @@ the **unity-cli-setup** skill (with `--update`) to perform the update.
 
 **Reporting:** report only what `status` returned. When suggesting next steps, do
 NOT invent CLI subcommands — raw C# is `cs exec`, there is no `cs run`. If unsure
-what's available, run `cs list-commands` rather than guessing.
+which subcommands exist, check `cs --help` — not `cs list-commands`, which lists
+Unity framework commands and needs the editor service running.
