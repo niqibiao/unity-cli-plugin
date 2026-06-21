@@ -670,10 +670,13 @@ def _maybe_self_refresh(argv):
 def cmd_setup(root, args, agent_root=None):
     """Install/update the Unity package in the project manifest.
 
-    Returns (rc, installed): installed is True only when the package was actually
-    written / cloned / updated, False for the "already installed" no-op. The caller
-    writes the project pin (to the running CLI version) only when installed is True
-    — a no-op never moves the pin (see adr/0001-cli-version-dispatch.md)."""
+    Returns (rc, should_pin). should_pin tells main() whether to write the project
+    pin to the running (newest) CLI version: True on a real install/update, or on
+    an "already installed" no-op for an UNPINNED project whose package is already
+    aligned with this CLI (a migration pin — otherwise such a project deadlocks:
+    runtime needs a pin but a no-op setup never writes one). False on a mismatched
+    no-op (the skill prompts the user to --update) or when a pin already exists.
+    See adr/0001-cli-version-dispatch.md."""
     if root is None:
         print("Error: no Unity project found. Use --project to specify the path.", file=sys.stderr)
         return 1, False
@@ -754,18 +757,27 @@ def cmd_setup(root, args, agent_root=None):
         if PACKAGE_NAME in deps:
             if not getattr(args, "update", False):
                 print(f"Already installed: {PACKAGE_NAME}")
+                # No-op: package unchanged, so don't pin to a mismatched (newer) CLI
+                # and don't move an existing pin — a mismatch is warned below and the
+                # unity-cli-setup skill prompts the user to --update. But an UNPINNED
+                # project whose package is already aligned with this CLI must get a
+                # pin, or every runtime command errors "no pin" with no way out short
+                # of --update (deadlock). Pin to the running CLI only in that case.
+                should_pin = False
                 try:
                     from cli.core_bridge import find_package_dir
                     pkg_dir = find_package_dir(root, agent_root)
                     if pkg_dir:
                         _warn_version_mismatch(pkg_dir)
+                        from cli.version_check import get_package_version, is_aligned
+                        pv = get_package_version(pkg_dir)
+                        has_pin = (Path(root) / ".unity-cli" / "cli.json").is_file()
+                        should_pin = bool(pv) and not has_pin and is_aligned(
+                            get_plugin_version(_CLI_DIR), pv)
                 except Exception:
                     pass
-                # No-op: package unchanged → never move the pin. If a mismatch was
-                # warned above, the unity-cli-setup skill prompts the user to decide
-                # (re-run with --update); the CLI does not decide for them.
                 _ensure_gitignore_entry(root)
-                return 0, False
+                return 0, should_pin
             # --update: remove and re-add to force Unity re-resolve
             print(f"Forcing re-resolve of {PACKAGE_NAME} ...")
             del deps[PACKAGE_NAME]
@@ -2402,12 +2414,12 @@ def main():
         copy_rc, _ = _perform_copy(_CLI_DIR, force=False)
         if copy_rc != 0:
             print("Warning: failed to install stable CLI copy — skills may invoke outdated code.", file=sys.stderr)
-        rc, installed = cmd_setup(root, args, agent_root)
-        # Write the project pin only when setup actually installed/updated the
-        # package — to the version that just ran setup (newest). A no-op never
-        # moves the pin. Runtime commands then run this exact pinned version
+        rc, should_pin = cmd_setup(root, args, agent_root)
+        # Write the project pin (to the version that ran setup = newest) when
+        # cmd_setup says so: a real install/update, or an aligned no-op for an
+        # unpinned project (migration). Runtime then runs this exact pinned version
         # verbatim (see adr/0001-cli-version-dispatch.md).
-        if rc == 0 and installed and root is not None:
+        if rc == 0 and should_pin and root is not None:
             _write_project_pin(root)
         sys.exit(rc)
     if args.cmd == "status":
