@@ -59,9 +59,7 @@ not paste the long CLI path:
 > resolve `com.zh1zh1.csharpconsole`. Once it's resolved, tell me and I'll check
 > status.
 
-When the user confirms Unity has resolved the package, run the
-**unity-cli-status** skill to verify package resolution and service connectivity.
-
-Do **not** promise the service will be reachable: `status` is the check, not a
-guarantee — the editor HTTP service is only reachable once the C# Console
-service is running in the editor. Report whatever `status` actually returns.
+When they confirm it's resolved, run the **unity-cli-status** skill to verify.
+Report whatever `status` returns — don't promise the service is reachable; it's
+only reachable once the C# Console service is running in the editor, and
+`status` is the check, not a guarantee.
