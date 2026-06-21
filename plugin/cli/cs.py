@@ -506,17 +506,18 @@ main()
 
 
 def _write_shim():
-    """(Re)write the dispatch shim to the fixed path skills call, and strip any
+    """(Re)write the dispatch shim to the fixed path skills call, then strip any
     non-shim leftovers there (the pre-store layout kept a whole CLI copy in this
-    dir). Idempotent and best-effort."""
+    dir). Raises OSError if the shim itself cannot be written — that path is
+    load-bearing (every skill invokes it). The legacy cleanup stays best-effort."""
     import shutil
+    _SHIM_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = _SHIM_DIR / "cs.py.tmp"
+    tmp.write_text(_SHIM_SOURCE, "utf-8")
+    os.replace(tmp, _SHIM_DIR / "cs.py")
+    # Best-effort cleanup: the fixed dir holds only the shim; drop anything else —
+    # legacy full-CLI siblings from the pre-store layout, a stray __pycache__, etc.
     try:
-        _SHIM_DIR.mkdir(parents=True, exist_ok=True)
-        tmp = _SHIM_DIR / "cs.py.tmp"
-        tmp.write_text(_SHIM_SOURCE, "utf-8")
-        os.replace(tmp, _SHIM_DIR / "cs.py")
-        # The fixed dir holds only the shim; drop anything else — legacy full-CLI
-        # siblings from the pre-store layout, a stray __pycache__, etc.
         for p in _SHIM_DIR.iterdir():
             if p.name == "cs.py":
                 continue
@@ -527,19 +528,21 @@ def _write_shim():
                     p.unlink()
             except OSError:
                 pass
-        try:
-            (_HOME_ROOT / "current" / ".source.json").unlink()  # stale legacy marker
-        except OSError:
-            pass
+        (_HOME_ROOT / "current" / ".source.json").unlink()  # stale legacy marker
     except OSError:
         pass
 
 
 def _shim_then(rc, msg):
-    """Refresh the dispatch shim, then return (rc, msg). Every _perform_copy
-    success path returns through here, so a valid store entry always leaves a
-    current shim behind — and the failure path, which doesn't, never clobbers it."""
-    _write_shim()
+    """Refresh the dispatch shim, then return (rc, msg) — so every _perform_copy
+    success path leaves a current shim. If the shim (the load-bearing fixed path)
+    can't be written, report failure even though the store copy itself succeeded:
+    a silent shim failure would leave skills with no usable entry point."""
+    try:
+        _write_shim()
+    except OSError as e:
+        return 1, (f"Error: CLI store updated but the dispatch shim at "
+                   f"{_SHIM_DIR / 'cs.py'} could not be written: {e}")
     return rc, msg
 
 
@@ -641,7 +644,7 @@ def cmd_install_cli(args):
     return rc
 
 
-def _maybe_self_refresh(argv):
+def _maybe_self_refresh(argv, maintenance=False):
     """Keep a store entry in sync with its source — but only within its own
     version. A store/<version> copy refreshes from its recorded source only when
     the source is still that same version with changed content (a dev edit); once
@@ -673,16 +676,18 @@ def _maybe_self_refresh(argv):
     if not src_cs.is_file():
         return  # source moved/removed (e.g. versioned cache pruned) — can't refresh here
     src_version = get_plugin_version(src_cs.parent)
-    if src_version != info.get("version"):
-        # Source is now a DIFFERENT version than this store entry. Store entries
-        # are immutable per-version snapshots; refreshing across versions would
-        # delegate to the source CLI and hijack a project pinned to this version
-        # onto whatever the source happens to be. The new version lands in its
-        # own store/<version> via install-cli/setup — leave this one alone.
+    same_version = src_version == info.get("version")
+    if not same_version and not maintenance:
+        # A runtime command must not be hijacked across versions: a project pinned
+        # to this entry stays on it even when the source has moved to a new version
+        # (which lands in its own store/<version> via install-cli/setup). Only the
+        # maintenance path (`setup`) may pick up a newer source — see below.
         return
-    if _cli_fingerprint(src_cs.parent, version=src_version) == info.get("fingerprint"):
+    if same_version and _cli_fingerprint(src_cs.parent, version=src_version) == info.get("fingerprint"):
         return  # already up to date (same version, unchanged content)
-    # Same version, content changed (dev edit) → refresh this entry in place.
+    # Delegate to the source: it deposits its version into store/<src_version> and
+    # runs the command as that version. Same-version → a dev-edit refresh in place;
+    # cross-version under `setup` → picks up a newer source so the upgrade takes.
     # Delegate to the source (execve would be cleaner but segfaults under Windows
     # Python, so use a child process and exit with its status).
     try:
@@ -2212,7 +2217,10 @@ def cmd_snippets_show(root, args):
 
 def main():
     if not (len(sys.argv) > 1 and sys.argv[1] == "install-cli"):
-        _maybe_self_refresh(sys.argv[1:])
+        # `setup` is the maintenance/upgrade path: let it pick up a newer source
+        # even across versions. Other commands must NOT cross-version-refresh —
+        # that would hijack a project pinned to this store entry.
+        _maybe_self_refresh(sys.argv[1:], maintenance=(len(sys.argv) > 1 and sys.argv[1] == "setup"))
 
     # Shared flags available on every subcommand.
     # Use SUPPRESS so subparser parses don't overwrite values supplied to the
