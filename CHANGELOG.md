@@ -11,6 +11,8 @@ the section matching the pushed tag (without the leading `v`) as release notes.
 
 ## [Unreleased]
 
+## [1.5.3] - 2026-06-23
+
 ### Added
 
 - **Version-namespaced CLI store + dispatch shim** — multiple plugin versions can
