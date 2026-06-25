@@ -23,25 +23,25 @@ Shared flags: `--project <path>` (override), `--ip` (default 127.0.0.1), `--port
 - **Pre-setup:** `setup` and `status` work with pure stdlib, no Unity package needed.
 - **Post-setup:** full CLI available once `com.zh1zh1.csharpconsole` is installed in the project and Unity resolves it.
 
-`setup` does **not** install the package — it locates the project, caches the resolved package path, and warns on a CLI/package `major.minor` mismatch. The user provides the package (commit it with the skill, or add via Unity Package Manager). Every command also does this locate+cache lazily on first run, so `setup` is a convenience, not a gate.
+`setup` installs the package: if `com.zh1zh1.csharpconsole` is missing from `Packages/manifest.json`, it adds the source (git URL by default, `--source` to override; `--update` forces re-resolve) and tells you to open Unity to resolve it. When the package is already present, `setup` is a no-op that warns on a CLI/package `major.minor` mismatch. Every command also locates + caches the resolved package path lazily on first run, so `setup` is a convenience, not a gate.
 
 ### Command-first principle
 
-When a built-in framework command exists, prefer `cs command <ns> <action>` over `cs exec <code>`. Code execution is a fallback, not the default. Use `cs list-commands --json` to discover available commands.
+When a built-in framework command exists, prefer `cs command` over `cs exec`. Code execution is a fallback, not the default. Use `cs list-commands --json` to discover available commands. Params for `command`/`exec`/`batch`/`complete` go in a JSON file via `--input` (never inline) — see the skill's "Passing parameters" note.
 
 ### Commands
 
 | Command | Phase | Description |
 |---------|-------|-------------|
-| `cs setup` | pre | Locate project + cache package path + version-check (does **not** install the package) |
+| `cs setup` | pre | Install the package into the manifest (version-check if already present) |
 | `cs status` | pre | Package + connection status + version info |
-| `cs exec <code> \| --file FILE` | post | Execute C# code (inline or from file) |
-| `cs command <ns> <action> [args]` | post | Run framework command |
-| `cs batch <json-array> [--stop-on-error]` | post | Execute multiple commands in one HTTP roundtrip |
+| `cs exec --input \| --file FILE` | post | Execute C# code (JSON params, or raw .cs file) |
+| `cs command --input` | post | Run framework command (JSON params) |
+| `cs batch --input [--stop-on-error]` | post | Execute multiple commands in one HTTP roundtrip |
 | `cs health` | post | Service health check |
 | `cs refresh [--wait TIMEOUT] [--exit-playmode]` | post | Trigger asset refresh + script compilation |
 | `cs list-commands` | post | List available commands |
-| `cs complete <code> <cursor>` | post | Get completions |
+| `cs complete --input` | post | Get completions |
 | `cs catalog sync [--catalog-path PATH]` | post | Sync custom command catalog from live editor |
 | `cs catalog list` | post | List cached custom commands (offline) |
 | `cs snippets list \| show \| search \| use` | post | Browse and run reusable C# snippets |

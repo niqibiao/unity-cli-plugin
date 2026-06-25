@@ -31,17 +31,17 @@ walking up from the working directory and from the CLI's own committed location
 (`__file__`), so it resolves the project regardless of the shell's cwd. `--project
 <path>` is an optional override only.
 
-The CLI runs in place from the committed skill. First use only needs the Unity package
-installed in the project (commit it with the skill, or add it via Unity Package
-Manager). `cs setup` does not install the package; it
-locates the project, caches the package path, and warns on a CLI/package `major.minor`
-mismatch.
+The CLI runs in place from the committed skill. `cs setup` installs the Unity package: if
+it's missing from `Packages/manifest.json`, setup adds the source (git URL by default,
+`--source`/`--update` to override) and you open Unity to resolve it; when it's already
+present, setup just warns on a CLI/package `major.minor` mismatch.
 
 ## Command-first principle
 
-When a built-in framework command exists, prefer `cs command <ns> <action>` over
-`cs exec <code>`. Code execution is a fallback. Use `cs list-commands --json` to
-discover commands; for reusable C#, prefer the snippet library (`cs snippets`).
+When a built-in framework command exists, prefer `cs command` over `cs exec`. Code
+execution is a fallback. Use `cs list-commands --json` to discover commands; for reusable
+C#, prefer the snippet library (`cs snippets`). Params for `command`/`exec`/`batch`/`complete`
+go in a JSON file via `--input` (never inline) — see SKILL.md's "Passing parameters".
 
 ## Two-phase lifecycle
 

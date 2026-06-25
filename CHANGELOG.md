@@ -19,15 +19,24 @@ the section matching the pushed tag (without the leading `v`) as release notes.
   `npx skills add niqibiao/unity-cli-skill --copy`, not as a Claude Code / Codex
   marketplace plugin. The CLI is bundled under `skills/unity-cli/scripts/cli/` and
   runs in place — no `~/.unity-cli-plugin` store/shim/copy. The 9 skills are merged
-  into one `SKILL.md` + `references/`. See ADR-0002.
+  into one `SKILL.md` + `references/`.
 - **BREAKING — no version management.** Removed per-project CLI version dispatch
   (store/shim/pin), package-tag auto-pin, `install-cli`, `check-update`, and
   self-refresh. The committed copy is the version record; a runtime
   `⚠ version mismatch` warning is the only compatibility check (CLI ↔ package
   `major.minor`).
-- **BREAKING — `cs setup` no longer installs the Unity package.** It locates the
-  project, caches the package path, and version-checks. Install the package
-  yourself (commit it with the skill, or add it via Unity Package Manager).
+- **BREAKING — params via `--input` JSON only.** `cs command` / `exec` / `batch` /
+  `complete` and `cs snippets use` take their params as a single JSON object from a
+  file (or `-` for stdin) via `--input`; inline positional args and `--args` were
+  removed. This eliminates cross-shell quoting/escaping of C# code and nested JSON.
+  `exec` also accepts `--file` for raw C#.
+- **`cs setup` installs the package.** When `com.zh1zh1.csharpconsole` is absent from
+  `Packages/manifest.json`, setup adds the source (git URL by default; `--source` to
+  override, `--update` to force re-resolve) and you open Unity to resolve it — the
+  source is written as-is, no version pin. When already present, setup is a no-op
+  that version-checks.
+- **Runtime port auto-detection.** In `--mode runtime`, an omitted `--port` probes
+  `15500-15509` to find the in-player service (players don't write `refresh_state.json`).
 - The CLI auto-detects the Unity project (walk-up from cwd + the CLI's committed
   location); `--project` is now an optional override, not required.
 - Machine-local state (package-path cache, snippet usage stats) moved out of the

@@ -25,20 +25,34 @@ directory, and from its own committed location). Prefix with
 `PYTHONDONTWRITEBYTECODE=1` so running the CLI leaves no `__pycache__` in the project:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 python "<SKILL_DIR>/scripts/cli/cs.py" command --json <ns> <action> ['<args-json>']
+PYTHONDONTWRITEBYTECODE=1 python "<SKILL_DIR>/scripts/cli/cs.py" command --json --input req.json
 ```
 
-No bootstrap/copy step — the CLI runs in place from this skill. First-time use only
-needs the **Unity package** installed into the project (see `references/setup.md`);
-`cs status` reports `NOT FOUND` until then. The first command auto-caches the
-resolved package path (machine-local, under your home cache), so an explicit
-`cs setup` is optional, not a gate.
+No bootstrap/copy step — the CLI runs in place from this skill. First-time use needs the
+**Unity package** in the project: `cs setup` installs it (see `references/setup.md`), and
+`cs status` reports `NOT FOUND` until Unity resolves it. The first command auto-caches the
+resolved package path (machine-local, under your home cache), so an explicit `cs setup` is
+a convenience, not a gate.
+
+### Passing parameters — `--input` JSON (never inline)
+
+`command`, `exec`, `batch`, and `complete` take their params as a **single JSON object
+written to a file** (or `-` for stdin), never as inline shell arguments. Write the JSON
+with your file tool, then pass `--input <file>` — this removes all shell quoting/escaping
+of C# code and nested JSON:
+
+```bash
+cs command --json --input req.json    # req.json: {"ns":"gameobject","action":"create","args":{"name":"Cube"}}
+cs exec    --json --input req.json    # req.json: {"code":"Debug.Log(\"hi\");"}
+cs exec    --json --file snippet.cs   # exec also accepts raw C# from a .cs file
+cs batch   --json --input req.json    # req.json: {"commands":[ … ],"stopOnError":true}
+```
 
 ## Routing — pick the subcommand
 
 | Task | Subcommand | Detail |
 |------|------------|--------|
-| Structured editor ops (GameObject/component/scene/prefab/asset/material/screenshot/profiler) | `cs command <ns> <action>` | references/commands.md |
+| Structured editor ops (GameObject/component/scene/prefab/asset/material/screenshot/profiler) | `cs command --input` | references/commands.md |
 | Raw C# in the live Editor (fallback) | `cs exec` | references/exec-code.md |
 | Reusable C# snippet library | `cs snippets …` | references/snippets.md |
 | Audit / validate snippets | `cs snippets doctor` / `stats` | references/snippets-audit.md |

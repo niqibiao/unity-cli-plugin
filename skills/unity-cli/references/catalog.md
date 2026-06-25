@@ -27,7 +27,7 @@ installed.
 
 ## Maintainer audit: built-in tables vs the live Editor
 
-**Audience: plugin maintainers.** Check whether the static built-in command tables in
+**Audience: skill maintainers.** Check whether the static built-in command tables in
 `references/commands.md` have drifted from the commands registered in the running
 Editor (new actions added upstream, removed actions, changed signatures). This does
 **not** touch the per-project custom-command catalog.

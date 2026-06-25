@@ -3,7 +3,7 @@
 Anti-rot maintenance for the snippet library. The library rots in four ways:
 **API drift** (Unity upgrade breaks bodies), **integrity drift** (files and
 audit entries diverge via merges / hand edits), **staleness** (cold, never
-reused), and **zombie deprecations** (retired but never removed). This skill
+reused), and **zombie deprecations** (retired but never removed). `cs snippets doctor`
 detects all four and funnels cleanup through the CLI.
 
 ## Workflow
@@ -49,5 +49,5 @@ detects all four and funnels cleanup through the CLI.
 
 ## When to trigger proactively
 
-- After running the `cs setup` skill with `--update`, or any Unity version change: run step 2.
+- After any Unity version upgrade (which can break snippet bodies): run step 2.
 - If two different snippets fail in one session: run step 1 before continuing.

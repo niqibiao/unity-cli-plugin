@@ -30,11 +30,11 @@ The 5 you'll actually use:
 |---------|---------|
 | `cs snippets search <q>` | Top-N lexical hits over id + summary |
 | `cs snippets show <id>` | Full body and metadata for one snippet |
-| `cs snippets use <id> --args '<json>'` | Run with typed args; tracks stats |
+| `cs snippets use <id> --input vals.json` | Run with typed args (JSON file `{"k":"v"}`); tracks stats |
 | `cs snippets add <id> --file <md>` | Validate and register a new snippet |
 | `cs snippets deprecate <id> [--supersede <new>]` | Retire a snippet without deletion |
 
-Full set: `list / show / search / use / add / update / deprecate / prune / stats / doctor` — see `cs snippets --help`. For library health audits and anti-rot cleanup (`doctor`), use the `cs snippets doctor` skill.
+Full set: `list / show / search / use / add / update / deprecate / prune / stats / doctor` — see `cs snippets --help`. For library health audits and anti-rot cleanup (`doctor`), use `cs snippets doctor`.
 
 ## Snippet Anatomy
 
@@ -127,6 +127,6 @@ No `Quaternion` (use `vector3` Euler or `vector4` raw inside `Run`). No `expr` (
 
 ## Boundary with `cs command` / `cs exec`
 
-- Built-in/custom command available → `cs command` (see `cs command` skill).
-- One-off ad-hoc → `cs exec` (see `cs exec` skill).
+- Built-in/custom command available → `cs command` (see references/commands.md).
+- One-off ad-hoc → `cs exec` (see references/exec-code.md).
 - Reusable ad-hoc → `cs snippets`.

@@ -10,9 +10,14 @@ If no built-in or custom command matches the task, **next** check `cs snippets` 
 
 ## Usage
 
+Write the request to a JSON file (your file tool handles all escaping), then:
+
 ```bash
-cs command --json <namespace> <action> ['<args-json>']
+cs command --json --input req.json
 ```
+
+`req.json` is a single object — `{"ns": "<namespace>", "action": "<action>", "args": { … }}`
+(`args` omitted for no-arg commands). `--input -` reads the JSON from stdin instead.
 
 ## Argument & Result Conventions
 
@@ -24,7 +29,7 @@ cs command --json <namespace> <action> ['<args-json>']
 
 ## Asset Refresh
 
-After writing `.cs` files or modifying assets on disk, trigger a refresh so Unity recompiles. The `cs refresh` skill wraps the full procedure (play-mode check, exit if needed, refresh, wait). For direct CLI use:
+After writing `.cs` files or modifying assets on disk, trigger a refresh so Unity recompiles. `cs refresh` wraps the full procedure (play-mode check, exit if needed, refresh, wait). For direct CLI use:
 
 ```bash
 cs refresh --wait --exit-playmode --json
@@ -179,7 +184,7 @@ Lookup order for custom (user-defined) commands:
    ```bash
    cs list-commands --type custom --json
    ```
-4. If a catalog refresh is needed, run `cs catalog sync --json` (or use the `cs catalog sync` skill).
+4. If a catalog refresh is needed, run `cs catalog sync --json`.
 
 ### Catalog commands
 
@@ -201,47 +206,25 @@ Most commands are **editor-only** (require the Unity Editor, not a standalone pl
 
 ## Examples
 
-Base command for all examples:
+Each block below is the `req.json` content; run it with `cs command --json --input req.json`:
 
-```bash
-cs command --json <namespace> <action> ['<args-json>']
+```json
+{"ns":"editor","action":"status"}
+{"ns":"gameobject","action":"create","args":{"name":"Wall","primitiveType":"Cube"}}
+{"ns":"transform","action":"set","args":{"path":"Wall","position":{"x":0,"y":1,"z":3}}}
+{"ns":"component","action":"get","args":{"gameObjectPath":"Main Camera","typeName":"Camera"}}
+{"ns":"screenshot","action":"scene_view","args":{"savePath":"Assets/screenshot.png"}}
+{"ns":"scene","action":"hierarchy","args":{"depth":3,"includeComponents":true}}
+{"ns":"prefab","action":"asset_hierarchy","args":{"assetPath":"Assets/Prefabs/Player.prefab","depth":2,"includeComponents":true}}
+{"ns":"prefab","action":"asset_add_component","args":{"assetPath":"Assets/Prefabs/Player.prefab","typeName":"BoxCollider","gameObjectPath":"Body"}}
 ```
 
+Discovery / catalog (no payload — plain flags, no `--input`):
+
 ```bash
-# No-arg command
-... editor status
-
-# Create a cube
-... gameobject create '{"name":"Wall","primitiveType":"Cube"}'
-
-# Move it (Vector3 as {x,y,z} object)
-... transform set '{"path":"Wall","position":{"x":0,"y":1,"z":3}}'
-
-# Get component data
-... component get '{"gameObjectPath":"Main Camera","typeName":"Camera"}'
-
-# Screenshot
-... screenshot scene_view '{"savePath":"Assets/screenshot.png"}'
-
-# Scene hierarchy with components
-... scene hierarchy '{"depth":3,"includeComponents":true}'
-
-# Inspect a prefab asset's hierarchy
-... prefab asset_hierarchy '{"assetPath":"Assets/Prefabs/Player.prefab","depth":2,"includeComponents":true}'
-
-# Add a component to a prefab asset (no need to instantiate)
-... prefab asset_add_component '{"assetPath":"Assets/Prefabs/Player.prefab","typeName":"BoxCollider","gameObjectPath":"Body"}'
-
-# Discover all commands (including custom)
 cs list-commands --json
-
-# Discover only custom commands
 cs list-commands --type custom --json
-
-# Sync the custom command catalog to disk
 cs catalog sync --json
-
-# List the cached catalog
 cs catalog list --json
 ```
 
@@ -251,5 +234,5 @@ cs catalog list --json
 2. Run the command with appropriate args
 3. **After writing C# files**, follow the Asset Refresh procedure above (check play mode → exit if needed → refresh)
 4. If no matching command exists in the built-in catalog, run `cs catalog list --json` to check the per-project custom-command cache
-5. If the cache is empty or stale, run `list-commands --type custom` as a live fallback and use the `cs catalog sync` skill
-6. If no command covers the request at all, fall back to the `cs exec` skill
+5. If the cache is empty or stale, run `cs list-commands --type custom` as a live fallback, then `cs catalog sync`
+6. If no command covers the request at all, fall back to `cs exec`

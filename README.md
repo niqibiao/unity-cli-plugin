@@ -46,28 +46,16 @@ CLI commands exposed through the agent's skill system.
 #    (.claude/skills/) and Codex (.agents/ + .codex/skills/).
 npx skills add niqibiao/unity-cli-skill --copy
 
-# 2. Make sure the Unity C# Console package is in the project — commit it with the
-#    skill, or add it via Unity Package Manager ("Add package from git URL"):
-#      https://github.com/niqibiao/unity-csharpconsole.git
-#    Then, in your agent:
-> set up unity-cli      # locate project + version-check (does NOT install the package)
+# 2. In your agent, run setup — it adds the Unity C# Console package to the project's
+#    Packages/manifest.json. Then open the Unity Editor so the Package Manager resolves
+#    it and the C# Console service starts.
+> set up unity-cli      # installs com.zh1zh1.csharpconsole (version-checks if present)
 
 # 3. Verify
 > check unity-cli status
 ```
 
-> Works identically in **Claude Code and Codex** — one skill folder, run in place;
-> the committed skill copy is the CLI.
-
 **Prerequisites:** [Claude Code](https://claude.ai/code) or [Codex CLI](https://github.com/openai/codex) 0.139+, Node.js (for `npx`), Unity 2022.3+, Python 3.7+
-
-### 🔒 Team / version notes
-
-Install with `npx skills add niqibiao/unity-cli-skill --copy` and **commit the skill
-folder and the Unity package together** — git is the version record, so everyone who
-pulls gets the same, aligned pair. Keep the CLI (`skills/unity-cli/scripts/cli/VERSION`)
-and the Unity package on the same `major.minor`; a `⚠ version mismatch` warning means
-they drifted.
 
 ### 💬 Usage
 
@@ -89,30 +77,15 @@ operation, and the agent triggers it automatically (Claude Code and Codex alike)
 
 | Subcommand | Description |
 | ---------- | ----------- |
-| `cs setup` | Locate project + version-check (does **not** install the package) |
+| `cs setup` | Install the package into the manifest (version-check if present) |
 | `cs status` / `cs health` | Package and service status |
-| `cs command <ns> <action>` | Structured Unity Editor commands |
+| `cs command --input` | Structured Unity Editor commands |
 | `cs exec` | Run raw C# in the Editor (fallback) |
 | `cs refresh` | Trigger asset refresh / recompile |
 | `cs catalog sync` / `cs list-commands` | Custom-command catalog + maintainer audit |
 | `cs snippets …` | Reusable C# snippet library |
 | `cs snippets doctor` | Snippet library health audit |
 
-
-#### 💻 Direct CLI
-
-`cs` = `python "<SKILL_DIR>/scripts/cli/cs.py"` (the committed skill's CLI). No
-`--project` — the project is auto-detected.
-
-```bash
-cs exec --json "Debug.Log(\"Hello\")"
-cs command --json gameobject create '{"name":"Cube","primitiveType":"Cube"}'
-cs refresh --json --exit-playmode --wait 60
-cs batch --json '[{"ns":"gameobject","action":"create","args":{"name":"A"}},{"ns":"gameobject","action":"create","args":{"name":"B"}}]'
-cs list-commands --json --timeout 10
-cs catalog sync --json
-cs snippets search "physics" --json
-```
 
 ### 📦 Commands
 
@@ -312,7 +285,7 @@ Auto-detects project root and service port. No manual configuration.
 | Problem                | Solution                                                                                   |
 | ---------------------- | ------------------------------------------------------------------------------------------ |
 | `service: UNREACHABLE` | Make sure Unity Editor is open with the project loaded                                     |
-| `package: NOT FOUND`   | Install `com.zh1zh1.csharpconsole` (commit it or add via UPM), then run `cs setup`        |
+| `package: NOT FOUND`   | Run `cs setup` to add the package, then open Unity to let it resolve                       |
 | Port conflict          | Service auto-advances to the next free port. Check `Temp/CSharpConsole/refresh_state.json` |
 | Commands not found     | Ensure the package compiled successfully (no errors in Unity Console)                      |
 | Version mismatch       | Run `cs status` to see versions; align the Unity package with the CLI `major.minor`        |

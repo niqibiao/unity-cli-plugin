@@ -14,7 +14,7 @@ _CLI_DIR = os.path.dirname(os.path.abspath(__file__))
 if os.path.dirname(_CLI_DIR) not in sys.path:
     sys.path.insert(0, os.path.dirname(_CLI_DIR))
 
-from cli import PACKAGE_NAME, DEFAULT_EDITOR_PORT, DEFAULT_RUNTIME_PORT
+from cli import PACKAGE_NAME, DEFAULT_SOURCE, DEFAULT_EDITOR_PORT, DEFAULT_RUNTIME_PORT
 from cli.version_check import get_plugin_version, is_aligned
 
 
@@ -86,6 +86,34 @@ def detect_port(project_root):
     except (OSError, json.JSONDecodeError, ValueError):
         pass
     return None
+
+
+def _probe_port(ip, start, count, timeout=0.3):
+    """Return the first TCP-reachable port in [start, start+count), or None.
+
+    Runtime players don't write refresh_state.json, and the in-player console
+    service advances past taken ports on startup, so when --port is omitted we
+    probe the runtime range to find where it actually landed."""
+    import socket
+    for port in range(start, start + count):
+        try:
+            with socket.create_connection((ip, port), timeout=timeout):
+                return port
+        except OSError:
+            continue
+    return None
+
+
+def _read_input_text(src):
+    """Read an --input / --file source: stdin if src == '-', else the file (BOM-stripped).
+    Raises OSError / UnicodeError on read failure."""
+    return sys.stdin.read() if src == "-" else Path(src).read_text("utf-8-sig")
+
+
+def _read_input_json(src):
+    """Read and JSON-parse an --input source (see _read_input_text). Propagates the read
+    errors above, or json.JSONDecodeError on a malformed payload."""
+    return json.loads(_read_input_text(src))
 
 
 # ── Output helpers ─────────────────────────────────────────────────────
@@ -167,28 +195,55 @@ def _new_session(root, args, pkg_dir):
 
 
 def cmd_setup(root, args):
-    """Locate the Unity project, cache the package path, and version-check.
+    """Locate the Unity project and install the C# Console package into its manifest.
 
-    setup no longer installs the package: the user provides it (committed into the
-    project, or added via UPM). setup just confirms where project + package are and
-    warns on a CLI/package major.minor mismatch. Any other command lazily does the
-    same locate+cache on first run, so setup is a convenience, not a gate.
-    Returns 0 when a project is found, 1 otherwise."""
+    When com.zh1zh1.csharpconsole is absent from Packages/manifest.json, setup adds it
+    (the git URL / file: path in --source, default DEFAULT_SOURCE) and tells the user to
+    open Unity so the Package Manager resolves it. When it's already present, setup is a
+    no-op that warns on a CLI/package major.minor mismatch (pass --update to force Unity
+    to re-resolve). The source is written as-is — no version pinning.
+    Returns 0 on success, 1 on error."""
     if root is None:
         print("Error: no Unity project found (need Assets/ + ProjectSettings/).",
               file=sys.stderr)
         return 1
+    manifest = root / "Packages" / "manifest.json"
+    if not manifest.exists():
+        print(f"Error: {manifest} not found.", file=sys.stderr)
+        return 1
+
     print(f"Unity project : {root}")
-    from cli.core_bridge import find_package_dir
-    pkg_dir = find_package_dir(root)
-    if pkg_dir:
-        print(f"package       : {pkg_dir}")
-        _warn_version_mismatch(pkg_dir)
-        print("Ready. Run `cs status` to verify the live service.")
-    else:
-        print(f"package       : NOT FOUND ({PACKAGE_NAME})")
-        print(f"Install {PACKAGE_NAME} into this project (UPM, or commit it), "
-              f"then re-run `cs setup`.")
+    try:
+        data = json.loads(manifest.read_text("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as e:
+        print(f"Error: failed to read {manifest}: {e}", file=sys.stderr)
+        return 1
+    deps = data.setdefault("dependencies", {})
+    source = getattr(args, "source", None) or DEFAULT_SOURCE
+
+    if PACKAGE_NAME in deps and not getattr(args, "update", False):
+        print(f"package       : already in manifest ({deps[PACKAGE_NAME]})")
+        from cli.core_bridge import find_package_dir
+        pkg_dir = find_package_dir(root)
+        if pkg_dir:
+            _warn_version_mismatch(pkg_dir)
+            print("Ready. Run `cs status` to verify the live service.")
+        else:
+            print("Open Unity Editor to let the Package Manager resolve it, then run `cs status`.")
+        return 0
+
+    if getattr(args, "update", False) and PACKAGE_NAME in deps:
+        print(f"Forcing re-resolve of {PACKAGE_NAME} ...")
+        del deps[PACKAGE_NAME]
+
+    deps[PACKAGE_NAME] = source
+    try:
+        manifest.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", "utf-8")
+    except OSError as e:
+        print(f"Error: failed to write {manifest}: {e}", file=sys.stderr)
+        return 1
+    print(f"package       : added to manifest ({source})")
+    print("Open Unity Editor to let the Package Manager resolve the package, then run `cs status`.")
     return 0
 
 
@@ -737,20 +792,26 @@ def cmd_snippets_use(root, args, agent_root):
               file=sys.stderr)
 
     arg_values = {}
-    if args.snippet_args:
+    if getattr(args, "input", None):
         try:
-            arg_values = json.loads(args.snippet_args)
+            arg_values = _read_input_json(args.input)
+        except (OSError, UnicodeError) as e:
+            _print_envelope(
+                {"ok": False, "exitCode": 1, "summary": f"--input: {e}"},
+                args.as_json,
+            )
+            return 1
         except json.JSONDecodeError as e:
             _print_envelope(
                 {"ok": False, "exitCode": 1,
-                 "summary": f"--args is not valid JSON: {e}"},
+                 "summary": f"--input is not valid JSON: {e}"},
                 args.as_json,
             )
             return 1
         if not isinstance(arg_values, dict):
             _print_envelope(
                 {"ok": False, "exitCode": 1,
-                 "summary": "--args must decode to a JSON object"},
+                 "summary": "--input must decode to a JSON object"},
                 args.as_json,
             )
             return 1
@@ -1500,6 +1561,84 @@ def cmd_snippets_show(root, args):
 
 # ── Main ────────────────────────────────────────────────────────────────
 
+def _apply_conn_opts(parser, args, payload):
+    """Copy connection opts from the --input JSON onto args, but only when the user
+    didn't pass the matching CLI flag (SUPPRESS leaves unpassed shared args unset),
+    so an explicit flag always wins over the JSON. A value that can't be cast fails the
+    command (like an invalid CLI flag would) instead of silently falling back."""
+    for key, attr, cast in (("ip", "ip", str), ("port", "port", int),
+                            ("mode", "mode", str), ("timeout", "timeout", int),
+                            ("compileIp", "compile_ip", str),
+                            ("compilePort", "compile_port", int)):
+        if key in payload and not hasattr(args, attr):
+            try:
+                setattr(args, attr, cast(payload[key]))
+            except (TypeError, ValueError):
+                parser.error(f'--input field "{key}" must be a valid {cast.__name__}')
+
+
+def _resolve_input(parser, args):
+    """Populate a command's params from --input: a single JSON object (or array, for
+    batch) read from a file, or '-' for stdin. The agent writes the JSON with its file
+    tool, so embedded quotes / newlines in C# code or command args never transit the
+    shell and need no escaping. This is the only way to pass params to exec / command /
+    batch / complete (exec also accepts --file for raw C#). Other commands that take
+    --input (e.g. snippets use) read it in their own handler."""
+    if args.cmd not in ("exec", "command", "batch", "complete"):
+        return
+    src = getattr(args, "input", None)
+    if src is None:
+        return
+    try:
+        payload = _read_input_json(src)
+    except (OSError, UnicodeError) as e:
+        parser.error(f"--input: {e}")
+    except json.JSONDecodeError as e:
+        parser.error(f"--input: invalid JSON ({e})")
+
+    cmd = args.cmd
+    if cmd == "exec":
+        if not isinstance(payload, dict) or not isinstance(payload.get("code"), str):
+            parser.error('--input for exec must be a JSON object with a string "code" field')
+        args.code = payload["code"]
+        _apply_conn_opts(parser, args, payload)
+    elif cmd == "command":
+        if not isinstance(payload, dict):
+            parser.error("--input for command must be a JSON object")
+        ns = payload.get("ns", payload.get("namespace"))
+        action = payload.get("action")
+        if not isinstance(ns, str) or not isinstance(action, str):
+            parser.error('--input for command needs string "ns" and "action"')
+        args.namespace = ns
+        args.action = action
+        cmd_args = payload.get("args")
+        if cmd_args is None or isinstance(cmd_args, str):
+            args.args = cmd_args
+        else:
+            args.args = json.dumps(cmd_args, ensure_ascii=False)
+        _apply_conn_opts(parser, args, payload)
+    elif cmd == "batch":
+        if isinstance(payload, list):
+            items = payload
+        elif isinstance(payload, dict):
+            items = payload.get("commands", payload.get("items"))
+            if "stopOnError" in payload:
+                args.stop_on_error = bool(payload["stopOnError"])
+            _apply_conn_opts(parser, args, payload)
+        else:
+            parser.error("--input for batch must be a JSON array or object")
+        if not isinstance(items, list):
+            parser.error('--input for batch needs a "commands" array (or a bare JSON array)')
+        args.commands = json.dumps(items, ensure_ascii=False)
+    elif cmd == "complete":
+        if (not isinstance(payload, dict) or not isinstance(payload.get("code"), str)
+                or not isinstance(payload.get("cursor"), int) or isinstance(payload.get("cursor"), bool)):
+            parser.error('--input for complete must be a JSON object with "code" (string) and "cursor" (int)')
+        args.code = payload["code"]
+        args.cursor = payload["cursor"]
+        _apply_conn_opts(parser, args, payload)
+
+
 def main():
     # Shared flags available on every subcommand.
     # Use SUPPRESS so subparser parses don't overwrite values supplied to the
@@ -1524,20 +1663,24 @@ def main():
     p = argparse.ArgumentParser(prog="cs", description="Unity C# Console CLI", parents=[shared])
     sub = p.add_subparsers(dest="cmd", metavar="<command>")
 
-    sub.add_parser("setup", parents=[shared],
-                   help="Locate project, cache package path, version-check (does not install the package)")
+    sp_setup = sub.add_parser("setup", parents=[shared],
+                   help="Install the C# Console package into the project manifest (version-check if already present)")
+    sp_setup.add_argument("--source", default=None,
+                          help=f"Package git URL or file: path (default: {DEFAULT_SOURCE})")
+    sp_setup.add_argument("--update", action="store_true",
+                          help="Force Unity to re-resolve the package (delete + re-add the manifest entry)")
 
     sub.add_parser("status", parents=[shared], help="Package + connection status")
 
     sp_exec = sub.add_parser("exec", parents=[shared], help="Execute C# code")
-    sp_exec.add_argument("code", nargs="?", help="C# code to execute (inline; omit when using --file)")
     sp_exec.add_argument("--file", "-f", dest="file",
-                         help="Read C# code from a file")
+                         help="Read raw C# code from a file")
+    sp_exec.add_argument("--input", "-i", dest="input", default=None,
+                         help='JSON params file (or - for stdin): {"code": "..."}; avoids shell-quoting')
 
     sp_cmd = sub.add_parser("command", parents=[shared], help="Run framework command")
-    sp_cmd.add_argument("namespace", help="Command namespace")
-    sp_cmd.add_argument("action", help="Command action")
-    sp_cmd.add_argument("args", nargs="?", default=None, help="Arguments (JSON)")
+    sp_cmd.add_argument("--input", "-i", dest="input", default=None, required=True,
+                        help='JSON params file (or - for stdin): {"ns":..,"action":..,"args":{..}}; avoids shell-quoting')
 
     sub.add_parser("health", parents=[shared], help="Service health check")
 
@@ -1554,13 +1697,14 @@ def main():
                         dest="cmd_type", help="Filter by command type (default: all)")
 
     sp_cmp = sub.add_parser("complete", parents=[shared], help="Get completions")
-    sp_cmp.add_argument("code")
-    sp_cmp.add_argument("cursor", type=int)
+    sp_cmp.add_argument("--input", "-i", dest="input", default=None, required=True,
+                        help='JSON params file (or - for stdin): {"code": "...", "cursor": N}; avoids shell-quoting')
 
     sp_batch = sub.add_parser("batch", parents=[shared], help="Execute multiple commands in one request")
-    sp_batch.add_argument("commands", help="JSON array of commands")
     sp_batch.add_argument("--stop-on-error", action="store_true",
                           help="Stop executing on first error")
+    sp_batch.add_argument("--input", "-i", dest="input", default=None, required=True,
+                          help='JSON params file (or - for stdin): {"commands":[..],"stopOnError":bool}; avoids shell-quoting')
 
     sp_cat = sub.add_parser("catalog", parents=[shared], help="Manage custom command catalog")
     cat_sub = sp_cat.add_subparsers(dest="catalog_cmd")
@@ -1583,8 +1727,8 @@ def main():
 
     sp_sn_use = sn_sub.add_parser("use", parents=[shared], help="Run a snippet")
     sp_sn_use.add_argument("snippet_id")
-    sp_sn_use.add_argument("--args", dest="snippet_args", default=None,
-                           help="JSON object of arg values")
+    sp_sn_use.add_argument("--input", "-i", dest="input", default=None,
+                           help='JSON file (or - for stdin) of arg values: {"k": "v", …}; avoids shell-quoting')
     sp_sn_use.add_argument("--dry-run", dest="dry_run", action="store_true",
                            help="Print the wrapped submission without executing")
 
@@ -1644,6 +1788,11 @@ def main():
 
     args = p.parse_args()
 
+    # --input: read this command's params from a JSON file (or '-' for stdin), so the
+    # agent can write the payload with its file tool instead of quoting JSON in the
+    # shell.  Payloads (C# code, nested args) are where all the escaping pain lives.
+    _resolve_input(p, args)
+
     # Apply defaults for any shared arg the user didn't pass (SUPPRESS leaves
     # attr unset).  This restores the original UX while preventing subparser
     # overwrites of values given at the top level.
@@ -1653,20 +1802,20 @@ def main():
         if not hasattr(args, k):
             setattr(args, k, v)
 
-    # Resolve `code` from --file for exec
+    # Resolve C# for exec: --file (raw code) or --input (JSON {"code":..}) — exactly one.
     if args.cmd == "exec":
         file = getattr(args, "file", None)
         if file is not None:
-            if args.code is not None:
-                p.error("argument --file: not allowed with positional code")
+            if getattr(args, "code", None) is not None:  # already set by --input
+                p.error("--file cannot be combined with --input")
             try:
-                args.code = Path(file).read_text(encoding="utf-8-sig")
+                args.code = _read_input_text(file)
             except (OSError, UnicodeError) as e:
                 p.error(f"--file: {e}")
             if not args.code.strip():
                 p.error(f"--file: {file} is empty")
-        elif args.code is None:
-            p.error("missing C# code: provide it inline or via --file")
+        elif getattr(args, "code", None) is None:
+            p.error('exec requires --input <file> (JSON {"code":..}) or --file <path>')
 
     root = find_project_root(args.project)
     # agent_root keys the per-project package-path cache; derive it from the
@@ -1679,12 +1828,15 @@ def main():
     needs_detect = args.port is None or (args.mode == "runtime" and args.compile_port is None)
     if root and needs_detect:
         detected_editor_port = detect_port(root)
-    default_port = DEFAULT_RUNTIME_PORT if args.mode == "runtime" else DEFAULT_EDITOR_PORT
     if args.port is None:
-        if args.mode != "runtime" and detected_editor_port:
+        if args.mode == "runtime":
+            # The player doesn't write refresh_state.json — probe the runtime range
+            # (15500-15509) to find where the in-player service actually landed.
+            args.port = _probe_port(args.ip, DEFAULT_RUNTIME_PORT, 10) or DEFAULT_RUNTIME_PORT
+        elif detected_editor_port:
             args.port = detected_editor_port
         else:
-            args.port = default_port
+            args.port = DEFAULT_EDITOR_PORT
     # In runtime mode, compile/refresh/health still target the editor.
     if args.mode == "runtime" and args.compile_port is None:
         args.compile_port = detected_editor_port or DEFAULT_EDITOR_PORT

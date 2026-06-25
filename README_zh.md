@@ -45,26 +45,15 @@ Claude:  完成。10 个 Cube 已在半径 5 处创建，均已添加 Rigidbody 
 #    npx 会自动识别你用的 Agent —— Claude Code（.claude/skills/）和 Codex（.agents/ + .codex/skills/）。
 npx skills add niqibiao/unity-cli-skill --copy
 
-# 2. 确保 Unity C# Console 包已在项目里 —— 随 skill 一起提交，或用 Unity Package Manager
-#    （"Add package from git URL"）添加：
-#      https://github.com/niqibiao/unity-csharpconsole.git
-#    然后在 Agent 里：
-> 安装 unity-cli      # 定位项目 + 版本校验（不会安装包）
+# 2. 在 Agent 里运行 setup —— 它会把 Unity C# Console 包写进项目的 Packages/manifest.json，
+#    然后打开 Unity 编辑器，让 Package Manager 解析这个包、启动 C# Console 服务。
+> 安装 unity-cli      # 安装 com.zh1zh1.csharpconsole（已安装则做版本校验）
 
 # 3. 验证
 > 查看 unity-cli 状态
 ```
 
-> 在 **Claude Code 和 Codex** 中行为一致 —— 一个 skill 文件夹，就地运行；提交进仓库的那份 skill 拷贝就是 CLI。
-
 **前置条件：** [Claude Code](https://claude.ai/code) 或 [Codex CLI](https://github.com/openai/codex) 0.139+、Node.js（用于 `npx`）、Unity 2022.3+、Python 3.7+
-
-### 🔒 团队 / 版本说明
-
-用 `npx skills add niqibiao/unity-cli-skill --copy` 安装，并**把 skill 文件夹和 Unity 包一起提交**
-—— git 就是版本台账，所有 pull 的人拿到的是同一对、对齐好的版本。保持 CLI
-（`skills/unity-cli/scripts/cli/VERSION`）和 Unity 包同一 `major.minor`；出现
-`⚠ version mismatch` 即说明漂移了。
 
 ### 💬 使用方式
 
@@ -86,29 +75,15 @@ Claude 会自动选择合适的命令，或在需要时编写 C# 代码。
 
 | 子命令 | 说明 |
 | ----- | ---- |
-| `cs setup` | 定位项目 + 版本校验（**不**安装包） |
+| `cs setup` | 安装包到 manifest（已安装则做版本校验） |
 | `cs status` / `cs health` | 包与服务状态 |
-| `cs command <ns> <action>` | 结构化 Unity 编辑器命令 |
+| `cs command --input` | 结构化 Unity 编辑器命令 |
 | `cs exec` | 在编辑器中执行原始 C#（兜底） |
 | `cs refresh` | 触发资产刷新 / 重编译 |
 | `cs catalog sync` / `cs list-commands` | 自定义命令目录 + 维护者审计 |
 | `cs snippets …` | 可复用 C# 片段库 |
 | `cs snippets doctor` | 片段库健康审计 |
 
-
-#### 💻 直接使用 CLI
-
-`cs` = `python "<SKILL_DIR>/scripts/cli/cs.py"`（提交进项目的那份 CLI）。不带 `--project` —— 项目自动探测。
-
-```bash
-cs exec --json "Debug.Log(\"Hello\")"
-cs command --json gameobject create '{"name":"Cube","primitiveType":"Cube"}'
-cs refresh --json --exit-playmode --wait 60
-cs batch --json '[{"ns":"gameobject","action":"create","args":{"name":"A"}},{"ns":"gameobject","action":"create","args":{"name":"B"}}]'
-cs list-commands --json --timeout 10
-cs catalog sync --json
-cs snippets search "physics" --json
-```
 
 ### 📦 命令
 
@@ -308,7 +283,7 @@ Claude Code                      Unity Editor
 | 问题                     | 解决方案                                                       |
 | ---------------------- | ---------------------------------------------------------- |
 | `service: UNREACHABLE` | 确保 Unity 编辑器已打开并加载了项目                                      |
-| `package: NOT FOUND`   | 安装 `com.zh1zh1.csharpconsole`（提交或用 UPM 添加），再运行 `cs setup`   |
+| `package: NOT FOUND`   | 运行 `cs setup` 添加包，再打开 Unity 解析它   |
 | 端口冲突                   | 服务会自动切换到下一个可用端口，查看 `Temp/CSharpConsole/refresh_state.json` |
 | 找不到命令                  | 确保包编译成功（Unity Console 中无报错）                                |
 | 版本不匹配                  | 运行 `cs status` 查看版本；把 Unity 包对齐到 CLI 的 `major.minor`        |
