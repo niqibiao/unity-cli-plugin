@@ -1,8 +1,8 @@
 <div align="center">
 
-# unity-cli-plugin
+# unity-cli
 
-**Unity Editor 的 AI 编程代理插件 — 支持 Claude Code 与 Codex CLI**<br/>
+**Unity Editor 的 AI 编程代理 skill — Claude Code 与 Codex CLI**<br/>
 **基于 [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)**
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
@@ -12,7 +12,7 @@
 40+ 命令覆盖场景编辑、组件、资产、截图、性能分析等。<br/>
 依赖 **[unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)** — 基于 Roslyn 的 Unity 交互式 C# REPL。
 
-[快速开始](#-快速开始--claude-code) · [使用方式](#-使用方式) · [命令](#-命令) · [自定义命令](#-自定义命令) · [架构](#️-架构)
+[快速开始](#-快速开始) · [使用方式](#-使用方式) · [命令](#-命令) · [自定义命令](#-自定义命令) · [架构](#️-架构)
 
 [English](README.md) | 中文
 
@@ -55,19 +55,16 @@ npx skills add niqibiao/unity-cli-skill --copy
 > 查看 unity-cli 状态
 ```
 
-> 在 **Claude Code 和 Codex** 中行为一致 —— 一个 skill 文件夹，就地运行，无市场/插件。
-> 没有 `~/.unity-cli-plugin`，也没有引导步骤；提交进仓库的那份 skill 拷贝就是 CLI。
+> 在 **Claude Code 和 Codex** 中行为一致 —— 一个 skill 文件夹，就地运行；提交进仓库的那份 skill 拷贝就是 CLI。
 
 **前置条件：** [Claude Code](https://claude.ai/code) 或 [Codex CLI](https://github.com/openai/codex) 0.139+、Node.js（用于 `npx`）、Unity 2022.3+、Python 3.7+
 
 ### 🔒 团队 / 版本说明
 
-没有版本管理机制（不锁插件版本，也没有 CLI 派发）。用
-`npx skills add niqibiao/unity-cli-skill --copy` 安装，并**把 skill 文件夹和 Unity 包一起提交**
+用 `npx skills add niqibiao/unity-cli-skill --copy` 安装，并**把 skill 文件夹和 Unity 包一起提交**
 —— git 就是版本台账，所有 pull 的人拿到的是同一对、对齐好的版本。保持 CLI
 （`skills/unity-cli/scripts/cli/VERSION`）和 Unity 包同一 `major.minor`；出现
-`⚠ version mismatch` 即说明漂移了。详见
-[ADR-0002](adr/0002-pure-skills-no-version-management.md)。
+`⚠ version mismatch` 即说明漂移了。
 
 ### 💬 使用方式
 
@@ -278,7 +275,7 @@ cs snippets search "physics" --json
 
 支持自定义命令。定义和注册方式请参考 [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)。
 
-插件为每个 Unity 项目维护一份持久化的自定义命令目录。运行 `cs catalog sync` 可从 Unity 拉取最新命令列表并缓存到磁盘；运行 `cs catalog list` 可在不连接编辑器的情况下离线查看已缓存的目录。
+本 skill 为每个 Unity 项目维护一份持久化的自定义命令目录。运行 `cs catalog sync` 可从 Unity 拉取最新命令列表并缓存到磁盘；运行 `cs catalog list` 可在不连接编辑器的情况下离线查看已缓存的目录。
 
 ### 🏗️ 架构
 
@@ -299,7 +296,7 @@ Claude Code                      Unity Editor
 └──────────────────┘            └──────────────────────────┘
 ```
 
-- **插件层**：Claude Code 和 Codex 调用的 Skills
+- **Skill 层**：Claude Code 和 Codex 调用的 `unity-cli` skill
 - **CLI 层**：Python 调度器，将请求序列化为 JSON
 - **Unity 层**：[unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole) — HTTP 服务，自动发现命令处理器，Roslyn C# REPL
 
@@ -325,4 +322,4 @@ Claude Code                      Unity Editor
 
 ---
 
-如果这个插件对你有帮助，请给个 Star，让更多人发现它。
+如果这个 skill 对你有帮助，请给个 Star，让更多人发现它。

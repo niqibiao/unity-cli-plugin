@@ -1,8 +1,8 @@
 <div align="center">
 
-# unity-cli-plugin
+# unity-cli
 
-**AI coding agent plugin for Unity Editor — supports Claude Code & Codex CLI**<br/>
+**AI coding agent skill for Unity Editor — Claude Code & Codex CLI**<br/>
 **Powered by [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)**
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
@@ -12,7 +12,7 @@
 40+ commands for scene editing, components, assets, screenshots, profiling, and more.<br/>
 Depends on **[unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)** — a Roslyn-powered interactive C# REPL for Unity.
 
-[Quick Start](#-quick-start--claude-code) · [Usage](#-usage) · [Commands](#-commands) · [Custom Commands](#-custom-commands) · [Architecture](#️-architecture)
+[Quick Start](#-quick-start) · [Usage](#-usage) · [Commands](#-commands) · [Custom Commands](#-custom-commands) · [Architecture](#️-architecture)
 
 English | [中文](README_zh.md)
 
@@ -27,7 +27,7 @@ Claude: Done. 10 cubes created at radius 5, each with a Rigidbody component.
 
 ### ⚡ CLI + Skills
 
-CLI commands exposed through Claude Code's skill system.
+CLI commands exposed through the agent's skill system.
 
 - **Token-efficient.** Skills load on demand.
 - **Unrestricted.** Falls back to a full [Roslyn C# REPL](https://github.com/niqibiao/unity-csharpconsole) — not limited to predefined tools.
@@ -56,20 +56,18 @@ npx skills add niqibiao/unity-cli-skill --copy
 > check unity-cli status
 ```
 
-> Works identically in **Claude Code and Codex** — one skill folder, run in place,
-> no marketplace or plugin. There is no `~/.unity-cli-plugin` and no bootstrap step;
+> Works identically in **Claude Code and Codex** — one skill folder, run in place;
 > the committed skill copy is the CLI.
 
 **Prerequisites:** [Claude Code](https://claude.ai/code) or [Codex CLI](https://github.com/openai/codex) 0.139+, Node.js (for `npx`), Unity 2022.3+, Python 3.7+
 
 ### 🔒 Team / version notes
 
-No version-management machinery (no plugin pinning, no CLI dispatch). Install with
-`npx skills add niqibiao/unity-cli-skill --copy` and **commit the skill folder and
-the Unity package together** — git is the version record, so everyone who pulls gets
-the same, aligned pair. Keep the CLI (`skills/unity-cli/scripts/cli/VERSION`) and the
-Unity package on the same `major.minor`; a `⚠ version mismatch` warning means they
-drifted. See [ADR-0002](adr/0002-pure-skills-no-version-management.md).
+Install with `npx skills add niqibiao/unity-cli-skill --copy` and **commit the skill
+folder and the Unity package together** — git is the version record, so everyone who
+pulls gets the same, aligned pair. Keep the CLI (`skills/unity-cli/scripts/cli/VERSION`)
+and the Unity package on the same `major.minor`; a `⚠ version mismatch` warning means
+they drifted.
 
 ### 💬 Usage
 
@@ -281,7 +279,7 @@ cs snippets search "physics" --json
 
 Custom commands are supported. See [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole) for how to define and register them.
 
-The plugin maintains a persistent per-project catalog of custom commands. Run `cs catalog sync` to pull the latest list from Unity and cache it to disk; run `cs catalog list` to view the cached catalog offline without connecting to the Editor.
+The skill maintains a persistent per-project catalog of custom commands. Run `cs catalog sync` to pull the latest list from Unity and cache it to disk; run `cs catalog list` to view the cached catalog offline without connecting to the Editor.
 
 ### 🏗️ Architecture
 
@@ -302,7 +300,7 @@ Claude Code                      Unity Editor
 └──────────────────┘            └──────────────────────────┘
 ```
 
-- **Plugin layer**: Skills invoked by Claude Code and Codex
+- **Skill layer**: one `unity-cli` skill invoked by Claude Code and Codex
 - **CLI layer**: Python dispatcher, serializes requests to JSON
 - **Unity layer**: [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole) — HTTP service, auto-discovered command handlers, Roslyn C# REPL
 
@@ -328,4 +326,4 @@ Auto-detects project root and service port. No manual configuration.
 
 ---
 
-If this plugin saves you time, consider giving it a star. It helps others find it.
+If this skill saves you time, consider giving it a star. It helps others find it.

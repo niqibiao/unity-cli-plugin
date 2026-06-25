@@ -11,7 +11,7 @@ A pure **skill** (`unity-cli`) providing a thin, pure-stdlib Python CLI for driv
 the Unity Editor/Player through the C# Console HTTP service
 (`com.zh1zh1.csharpconsole`). No external dependencies, no build step. Installed with
 `npx skills add niqibiao/unity-cli-skill --copy`; the CLI is bundled in the skill and
-runs in place. See `adr/0002-pure-skills-no-version-management.md`.
+runs in place.
 
 ## Invoking the CLI (read this first)
 
@@ -24,18 +24,16 @@ python "<SKILL_DIR>/scripts/cli/cs.py" <cmd> --json
 
 `<SKILL_DIR>` is the absolute base directory the agent provides when the skill loads.
 Both Claude Code and Codex substitute it to an absolute path and run it **without
-`cd`** (verified on Codex 0.139 under native skills — see
-`adr/0002-pure-skills-no-version-management.md`; the old `$HOME` dispatch shim that
-`docs/dual-agent-support.md` described is gone).
+`cd`** (verified on Codex 0.139 under native skills).
 
 **Do not pass `--project`.** `find_project_root()` auto-detects the Unity root by
 walking up from the working directory and from the CLI's own committed location
 (`__file__`), so it resolves the project regardless of the shell's cwd. `--project
 <path>` is an optional override only.
 
-There is **no bootstrap step** — the CLI runs in place from the committed skill. First
-use only needs the Unity package installed in the project (commit it with the skill,
-or add it via Unity Package Manager). `cs setup` does not install the package; it
+The CLI runs in place from the committed skill. First use only needs the Unity package
+installed in the project (commit it with the skill, or add it via Unity Package
+Manager). `cs setup` does not install the package; it
 locates the project, caches the package path, and warns on a CLI/package `major.minor`
 mismatch.
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A **pure skill** (`unity-cli`) providing a thin Python CLI for interacting with Unity Editor/Player via the C# Console HTTP service (`com.zh1zh1.csharpconsole`). Pure stdlib Python — no external dependencies. Installed with `npx skills add niqibiao/unity-cli-skill --copy`; the CLI is bundled under `skills/unity-cli/scripts/cli/` and runs **in place** (no `~/.unity-cli-plugin`, no marketplace/plugin, no bootstrap). See `adr/0002-pure-skills-no-version-management.md`.
+A **pure skill** (`unity-cli`) providing a thin Python CLI for interacting with Unity Editor/Player via the C# Console HTTP service (`com.zh1zh1.csharpconsole`). Pure stdlib Python — no external dependencies. Installed with `npx skills add niqibiao/unity-cli-skill --copy`; the CLI is bundled under `skills/unity-cli/scripts/cli/` and runs **in place** from the committed skill.
 
 ## CLI
 
