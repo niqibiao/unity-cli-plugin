@@ -2,7 +2,7 @@
 
 # unity-cli
 
-**AI coding agent skill for Unity Editor — Claude Code & Codex CLI**<br/>
+**AI coding agent skill for Unity Editor — works with any skills-compatible agent (Claude Code, Codex, …)**<br/>
 **Powered by [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)**
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
@@ -41,17 +41,15 @@ CLI commands exposed through the agent's skill system.
 ### 🚀 Quick Start
 
 > ⚠️ **`cd` into your Unity project root *before* running `npx skills add`.**
-> `npx skills add` installs into the **current directory's** agent folders, so the skill
-> must land **inside the project** (committed with it). **Do not run it from your home /
-> user directory:** the CLI locates the Unity project by walking up from its own committed
-> location, so a home/global install never resolves a project (it then depends on the
-> shell's cwd alone and breaks the moment you run from elsewhere), a single shared copy
-> can't stay version-locked with each project's Unity package, and teammates won't get it
-> via `git pull`.
+> `npx skills add` installs into the **current directory's** agent folders, so run it from
+> the project and the skill lands **inside that project**. **Do not run it from your home /
+> user directory:** the CLI locates the Unity project by walking up from the skill's own
+> installed location, so a home/global install never resolves a project — it then depends
+> on the shell's cwd alone and breaks the moment you run a command from elsewhere.
 
 ```bash
-# 1. cd into your Unity PROJECT ROOT first, then install the skill there (real files,
-#    committable). npx auto-detects your agent(s) — Claude Code (.claude/skills/) and
+# 1. cd into your Unity PROJECT ROOT first, then install the skill there. npx
+#    auto-detects your skills-compatible agent(s) — e.g. Claude Code (.claude/skills/),
 #    Codex (.agents/ + .codex/skills/).
 cd path/to/your/UnityProject
 npx skills add niqibiao/unity-cli-skill --copy
@@ -65,11 +63,11 @@ npx skills add niqibiao/unity-cli-skill --copy
 > check unity-cli status
 ```
 
-**Prerequisites:** [Claude Code](https://claude.ai/code) or [Codex CLI](https://github.com/openai/codex) 0.139+, Node.js (for `npx`), Unity 2022.3+, Python 3.7+
+**Prerequisites:** a skills-compatible agent (e.g. [Claude Code](https://claude.ai/code) or [Codex CLI](https://github.com/openai/codex) 0.139+), Node.js (for `npx`), Unity 2022.3+, Python 3.7+
 
 ### 💬 Usage
 
-Just tell Claude what you want:
+Just tell your agent what you want:
 
 ```
 > Add a directional light and rotate it 45 degrees on X
@@ -78,12 +76,12 @@ Just tell Claude what you want:
 > Start profiler recording with deep profiling
 ```
 
-Claude picks the right command or writes C# code as needed.
+The agent picks the right command or writes C# code as needed.
 
 #### 🧩 One skill, many subcommands
 
 Everything ships in **one skill** (`unity-cli`); its `cs` subcommands cover every
-operation, and the agent triggers it automatically (Claude Code and Codex alike):
+operation, and the agent triggers it automatically (in any skills-compatible agent):
 
 | Subcommand | Description |
 | ---------- | ----------- |
@@ -267,7 +265,7 @@ The skill maintains a persistent per-project catalog of custom commands. Run `cs
 ### 🏗️ Architecture
 
 ```
-Claude Code                      Unity Editor
+AI Agent                         Unity Editor
 ┌──────────────────┐            ┌──────────────────────────┐
 │  Skills          │            │  com.zh1zh1.csharpconsole│
 │  ┌────────────┐  │            │  ┌────────────────────┐  │
@@ -283,7 +281,7 @@ Claude Code                      Unity Editor
 └──────────────────┘            └──────────────────────────┘
 ```
 
-- **Skill layer**: one `unity-cli` skill invoked by Claude Code and Codex
+- **Skill layer**: one `unity-cli` skill invoked by your agent
 - **CLI layer**: Python dispatcher, serializes requests to JSON
 - **Unity layer**: [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole) — HTTP service, auto-discovered command handlers, Roslyn C# REPL
 

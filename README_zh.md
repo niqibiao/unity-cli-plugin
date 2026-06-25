@@ -2,7 +2,7 @@
 
 # unity-cli
 
-**Unity Editor 的 AI 编程代理 skill — Claude Code 与 Codex CLI**<br/>
+**Unity Editor 的 AI 编程代理 skill — 适用于任何兼容 skills 的 Agent（Claude Code、Codex 等）**<br/>
 **基于 [unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole)**
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
@@ -27,7 +27,7 @@ Claude:  完成。10 个 Cube 已在半径 5 处创建，均已添加 Rigidbody 
 
 ### ⚡ CLI + Skill
 
-通过 Claude Code 的 Skill 体系暴露 CLI 命令。
+通过 Agent 的 Skill 体系暴露 CLI 命令。
 
 - **省 token。** Skill 按需加载。
 - **无限制。** 可回退到完整的 [Roslyn C# REPL](https://github.com/niqibiao/unity-csharpconsole) —— 不受预定义工具限制。
@@ -41,14 +41,13 @@ Claude:  完成。10 个 Cube 已在半径 5 处创建，均已添加 Rigidbody 
 ### 🚀 快速开始
 
 > ⚠️ **执行 `npx skills add` 之前，务必先 `cd` 进入你的 Unity 项目根目录。**
-> `npx skills add` 会装到**当前目录**的 Agent 文件夹里，所以 skill 必须落在**项目内**（随项目一起提交）。
-> **不要在用户主目录 / 全局目录里执行：** CLI 通过从自身提交位置向上查找来定位 Unity 项目，装到主目录后
-> 永远定位不到项目（只能退而依赖当前 shell 的 cwd，一旦换个目录运行就失效）；一份全局共享拷贝无法与每个
-> 项目各自的 Unity 包保持版本一致；队友也无法通过 `git pull` 拿到它。
+> `npx skills add` 会装到**当前目录**的 Agent 文件夹里 —— 从项目里执行，skill 才会落在**这个项目内**。
+> **不要在用户主目录 / 全局目录里执行：** CLI 通过从 skill 自身的安装位置向上查找来定位 Unity 项目，
+> 装到主目录后永远定位不到项目，只能退而依赖当前 shell 的 cwd（一旦换个目录运行就会失效）。
 
 ```bash
-# 1. 先 cd 进入你的 Unity 项目根目录，再把 skill 装到这里（实体文件，可提交）。
-#    npx 会自动识别你用的 Agent —— Claude Code（.claude/skills/）和 Codex（.agents/ + .codex/skills/）。
+# 1. 先 cd 进入你的 Unity 项目根目录，再把 skill 装到这里。
+#    npx 会自动识别你用的兼容 skills 的 Agent —— 如 Claude Code（.claude/skills/）、Codex（.agents/ + .codex/skills/）。
 cd path/to/your/UnityProject
 npx skills add niqibiao/unity-cli-skill --copy
 
@@ -60,7 +59,7 @@ npx skills add niqibiao/unity-cli-skill --copy
 > 查看 unity-cli 状态
 ```
 
-**前置条件：** [Claude Code](https://claude.ai/code) 或 [Codex CLI](https://github.com/openai/codex) 0.139+、Node.js（用于 `npx`）、Unity 2022.3+、Python 3.7+
+**前置条件：** 一个兼容 skills 的 Agent（如 [Claude Code](https://claude.ai/code) 或 [Codex CLI](https://github.com/openai/codex) 0.139+）、Node.js（用于 `npx`）、Unity 2022.3+、Python 3.7+
 
 ### 💬 使用方式
 
@@ -78,7 +77,7 @@ Claude 会自动选择合适的命令，或在需要时编写 C# 代码。
 #### 🧩 一个 skill，多个子命令
 
 所有功能都在**一个 skill**（`unity-cli`）里；它的 `cs` 子命令覆盖全部操作，Agent 会自动触发
-（Claude Code 和 Codex 通用）：
+（任何兼容 skills 的 Agent 通用）：
 
 | 子命令 | 说明 |
 | ----- | ---- |
@@ -262,7 +261,7 @@ Claude 会自动选择合适的命令，或在需要时编写 C# 代码。
 ### 🏗️ 架构
 
 ```
-Claude Code                      Unity Editor
+AI Agent                         Unity Editor
 ┌──────────────────┐            ┌──────────────────────────┐
 │  Skills          │            │  com.zh1zh1.csharpconsole│
 │  ┌────────────┐  │            │  ┌────────────────────┐  │
@@ -278,7 +277,7 @@ Claude Code                      Unity Editor
 └──────────────────┘            └──────────────────────────┘
 ```
 
-- **Skill 层**：Claude Code 和 Codex 调用的 `unity-cli` skill
+- **Skill 层**：你的 Agent 调用的 `unity-cli` skill
 - **CLI 层**：Python 调度器，将请求序列化为 JSON
 - **Unity 层**：[unity-csharpconsole](https://github.com/niqibiao/unity-csharpconsole) — HTTP 服务，自动发现命令处理器，Roslyn C# REPL
 
