@@ -35,91 +35,39 @@ Claude:  完成。10 个 Cube 已在半径 5 处创建，均已添加 Rigidbody 
 - **感知工作流。** 理解 Unity 的编译生命周期、Play Mode、域重载。
 - **自定义命令自动发现。** 用户定义的 C# 命令会自动同步到 Skill 目录。
 - **运行时 / IL2CPP 支持。** 配合 HybridCLR 可在运行时构建中使用。
-- **自我进化的代码片段库** — 项目本地 C# 片段（`.md` 文件，不参与编译），带验证门、使用频次跟踪、自动老化。通过 `cs snippets` 子命令和 `unity-cli-snippets` skill 发现和演化。
+- **自我进化的代码片段库** — 项目本地 C# 片段（`.md` 文件，不参与编译），带验证门、使用频次跟踪、自动老化。通过 `cs snippets` 子命令发现和演化。
 
 
-### 🚀 快速开始 — Claude Code
-
-**前置条件：** [Claude Code](https://claude.ai/code)、Unity 2022.3+、Python 3.7+
+### 🚀 快速开始
 
 ```bash
-# 1. 添加市场源并安装插件
-claude plugin marketplace add niqibiao/unity-cli-plugin
-claude plugin install unity-cli-plugin
+# 1. 把 skill 安装进你的 Unity 项目（实体文件，可提交）。在项目根目录运行；
+#    npx 会自动识别你用的 Agent —— Claude Code（.claude/skills/）和 Codex（.agents/ + .codex/skills/）。
+npx skills add niqibiao/unity-cli-skill --copy
 
-# 2. 安装 Unity 包（在项目目录下）—— 直接让 Claude 做：
-claude
-> 安装 unity-cli
+# 2. 确保 Unity C# Console 包已在项目里 —— 随 skill 一起提交，或用 Unity Package Manager
+#    （"Add package from git URL"）添加：
+#      https://github.com/niqibiao/unity-csharpconsole.git
+#    然后在 Agent 里：
+> 安装 unity-cli      # 定位项目 + 版本校验（不会安装包）
 
 # 3. 验证
 > 查看 unity-cli 状态
 ```
 
-### 🤖 快速开始 — Codex CLI
+> 在 **Claude Code 和 Codex** 中行为一致 —— 一个 skill 文件夹，就地运行，无市场/插件。
+> 没有 `~/.unity-cli-plugin`，也没有引导步骤；提交进仓库的那份 skill 拷贝就是 CLI。
 
-所有功能都以 Skill 形式提供，两个 Agent 共享。
+**前置条件：** [Claude Code](https://claude.ai/code) 或 [Codex CLI](https://github.com/openai/codex) 0.139+、Node.js（用于 `npx`）、Unity 2022.3+、Python 3.7+
 
-**前置条件：** [Codex CLI](https://github.com/openai/codex) 0.139+、Unity 2022.3+、Python 3.7+
+### 🔒 团队 / 版本说明
 
-```bash
-# 1. 添加市场源并安装插件
-codex plugin marketplace add niqibiao/unity-cli-plugin
-codex plugin add unity-cli-plugin@unity-cli-plugin
-
-# 2. 安装 Unity 包（在项目目录下）—— 直接让 Codex 做：
-codex
-> 安装 unity-cli
-
-# 3. 验证
-> 查看 unity-cli 状态
-```
-
-### 🔒 团队版本管理
-
-把整个团队锁定到同一版本，并通过改提交进仓库的文件来统一升级所有人。一共**三个版本旋钮**——
-保持它们在同一 `major.minor`（patch 号可因仓库而异），避免 `⚠ version mismatch`。
-
-**1. Claude Code 插件** —— 提交到 `.claude/settings.json`：
-
-```json
-{
-  "extraKnownMarketplaces": {
-    "unity-cli-plugin": {
-      "source": { "source": "github", "repo": "niqibiao/unity-cli-plugin", "ref": "v1.5.1" },
-      "autoUpdate": true
-    }
-  },
-  "enabledPlugins": { "unity-cli-plugin@unity-cli-plugin": true }
-}
-```
-
-`source.ref`（tag/commit）锁死版本；`autoUpdate: true` 在每次会话启动把成员对齐到提交的 `ref`（自动修复漂移，无需手动 `/plugin`）。版本写在 `source.ref`，**不是** `enabledPlugins` 的 key——key 是 `plugin-id@marketplace-id`，不支持版本语法。
-
-**2. Codex CLI 插件** —— 提交到 `.agents/plugins/marketplace.json`：
-
-```json
-{
-  "name": "unity-cli-pinned",
-  "plugins": [
-    {
-      "name": "unity-cli-plugin",
-      "source": { "source": "git-subdir", "url": "https://github.com/niqibiao/unity-cli-plugin.git", "path": "plugin", "ref": "v1.5.1" }
-    }
-  ]
-}
-```
-
-`git-subdir` 源的 `ref`（tag）或 `sha`（commit）锁死版本，`path` 指向仓库内的插件子目录。Codex **没有 `autoUpdate` 等价物**：clone 后每人首次要装一次 + reload（`/plugin install`，再 `/reload-plugins`，或重启 Codex）。之后 bump `ref` 需要 `codex plugin marketplace upgrade` + reload。
-
-**3. Unity 包** —— pin 在 `Packages/manifest.json`（由 `cs setup` 管理）：
-
-```json
-{ "dependencies": { "com.zh1zh1.csharpconsole": "https://github.com/niqibiao/unity-csharpconsole.git#v1.5.0" } }
-```
-
-**统一升级团队：** 把各处 pin 改成对应仓库的新 tag（插件与包保持同一 major.minor），提交并推送。成员下次开会话时：Claude 自动更新；Codex 跑一次 `marketplace upgrade` + reload；Unity 在编辑器打开时重新 resolve 包。
-
-> Claude（`autoUpdate`）完全无感。Codex 只锁源、**不会** clone 即自动安装——首次安装和每次升级都要手动 reload/重启。
+没有版本管理机制（不锁插件版本，也没有 CLI 派发）。用
+`npx skills add niqibiao/unity-cli-skill --copy` 安装，并**把 skill 文件夹和 Unity 包一起提交**
+—— git 就是版本台账，所有 pull 的人拿到的是同一对、对齐好的版本。保持 CLI
+（`skills/unity-cli/scripts/cli/VERSION`）和 Unity 包同一 `major.minor`；出现
+`⚠ version mismatch` 即说明漂移了。详见
+[ADR-0002](adr/0002-pure-skills-no-version-management.md)。
 
 ### 💬 使用方式
 
@@ -134,35 +82,35 @@ codex
 
 Claude 会自动选择合适的命令，或在需要时编写 C# 代码。
 
-#### 🧩 Skills
+#### 🧩 一个 skill，多个子命令
 
-所有功能都是 Skill —— Claude 会根据你的请求自动触发（Claude Code 和 Codex 通用）：
+所有功能都在**一个 skill**（`unity-cli`）里；它的 `cs` 子命令覆盖全部操作，Agent 会自动触发
+（Claude Code 和 Codex 通用）：
 
-| Skill                         | 说明              |
-| ----------------------------- | --------------- |
-| `unity-cli-setup`            | 安装 Unity 包（跨 Agent 引导） |
-| `unity-cli-status`           | 检查包和服务状态        |
-| `unity-cli-refresh`          | 触发资产刷新 / 重编译    |
-| `unity-cli-refresh-commands` | 刷新每项目自定义命令缓存    |
-| `unity-cli-sync-catalog`     | 审计内置命令表与实时 Editor 是否一致（维护者用） |
-| `unity-cli-command`          | 结构化 Unity 编辑器命令 |
-| `unity-cli-exec-code`        | 在编辑器中执行原始 C#（兜底） |
-| `unity-cli-snippets`         | 可复用 C# 片段库      |
-| `unity-cli-snippets-audit`   | 片段库健康审计         |
+| 子命令 | 说明 |
+| ----- | ---- |
+| `cs setup` | 定位项目 + 版本校验（**不**安装包） |
+| `cs status` / `cs health` | 包与服务状态 |
+| `cs command <ns> <action>` | 结构化 Unity 编辑器命令 |
+| `cs exec` | 在编辑器中执行原始 C#（兜底） |
+| `cs refresh` | 触发资产刷新 / 重编译 |
+| `cs catalog sync` / `cs list-commands` | 自定义命令目录 + 维护者审计 |
+| `cs snippets …` | 可复用 C# 片段库 |
+| `cs snippets doctor` | 片段库健康审计 |
 
 
 #### 💻 直接使用 CLI
 
+`cs` = `python "<SKILL_DIR>/scripts/cli/cs.py"`（提交进项目的那份 CLI）。不带 `--project` —— 项目自动探测。
+
 ```bash
-python plugin/cli/cs.py exec --json --project . "Debug.Log(\"Hello\")"
-python plugin/cli/cs.py command --json --project . gameobject create '{"name":"Cube","primitiveType":"Cube"}'
-python plugin/cli/cs.py refresh --json --project . --exit-playmode --wait 60
-python plugin/cli/cs.py batch --json --project . '[{"ns":"gameobject","action":"create","args":{"name":"A"}},{"ns":"gameobject","action":"create","args":{"name":"B"}}]'
-python plugin/cli/cs.py list-commands --json --project . --timeout 10
-python plugin/cli/cs.py catalog sync --json --project .
-python plugin/cli/cs.py catalog list --json --project .
-python plugin/cli/cs.py snippets list --json --project .
-python plugin/cli/cs.py snippets search "physics" --json --project .
+cs exec --json "Debug.Log(\"Hello\")"
+cs command --json gameobject create '{"name":"Cube","primitiveType":"Cube"}'
+cs refresh --json --exit-playmode --wait 60
+cs batch --json '[{"ns":"gameobject","action":"create","args":{"name":"A"}},{"ns":"gameobject","action":"create","args":{"name":"B"}}]'
+cs list-commands --json --timeout 10
+cs catalog sync --json
+cs snippets search "physics" --json
 ```
 
 ### 📦 命令
@@ -363,10 +311,10 @@ Claude Code                      Unity Editor
 | 问题                     | 解决方案                                                       |
 | ---------------------- | ---------------------------------------------------------- |
 | `service: UNREACHABLE` | 确保 Unity 编辑器已打开并加载了项目                                      |
-| `package: NOT FOUND`   | 运行 `unity-cli-setup` skill，或检查 `Packages/manifest.json`     |
+| `package: NOT FOUND`   | 安装 `com.zh1zh1.csharpconsole`（提交或用 UPM 添加），再运行 `cs setup`   |
 | 端口冲突                   | 服务会自动切换到下一个可用端口，查看 `Temp/CSharpConsole/refresh_state.json` |
 | 找不到命令                  | 确保包编译成功（Unity Console 中无报错）                                |
-| 版本不匹配                  | 运行 `unity-cli-status` skill 查看版本信息，如协议版本不同请更新包             |
+| 版本不匹配                  | 运行 `cs status` 查看版本；把 Unity 包对齐到 CLI 的 `major.minor`        |
 
 
 ---
