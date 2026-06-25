@@ -1,39 +1,27 @@
----
-name: unity-cli-exec-code
-description: >
-  Fallback for raw C# execution in Unity when no framework command covers the task.
-  Check unity-cli-command first. For: custom scripting, AssetDatabase, multi-API queries,
-  reflection, private member access, LINQ scene queries, or uncovered Unity APIs.
-  Triggers on C# snippets or "execute C#"/"run code"/"eval" requests.
----
-
 # Unity CLI Exec Code (Fallback)
 
 Execute raw C# in a running Unity Editor via the Roslyn-based CSharpConsole REPL.
-Always prefer the `unity-cli-command` skill first.
+Always prefer `cs command` first.
 
-Then check the snippet library (`cs snippets search <description>`) before writing ad-hoc code. After solving a non-trivial task that's likely to recur, consider distilling it into a snippet — see the `unity-cli-snippets` skill.
-
-> **Running `cs`:** below, `cs` is shorthand for
-> `python "$HOME/.unity-cli-plugin/current/cli/cs.py"` — one stable path, run
-> verbatim without changing directory. If it's not installed yet, run the
-> **unity-cli-setup** skill once first.
+Then check the snippet library (`cs snippets search <description>`) before writing ad-hoc code. After solving a non-trivial task that's likely to recur, consider distilling it into a snippet — see references/snippets.md.
 
 ## Usage
 
-Inline code:
+Pass the C# code as a single JSON object in a file (or `-` for stdin) — your file tool
+writes it, so quotes / newlines / backslashes need no shell escaping:
 
 ```bash
-python "$HOME/.unity-cli-plugin/current/cli/cs.py" exec --json --project "$(pwd)" "<C# code>"
+cs exec --json --input req.json     # req.json: {"code":"<C# code>"}
 ```
 
-From a file (avoids shell quoting hazards for long/complex snippets):
+Or pass raw C# straight from a `.cs` file:
 
 ```bash
-python "$HOME/.unity-cli-plugin/current/cli/cs.py" exec --json --project "$(pwd)" --file path/to/snippet.cs
+cs exec --json --file path/to/snippet.cs
 ```
 
-All examples below use the inline form, showing only the C# code portion for brevity.
+The examples below show only the C# code — put it in `{"code": "..."}` for `--input`,
+or in a `.cs` file for `--file`.
 
 ## REPL Features
 
@@ -106,10 +94,10 @@ foreach(var r in GameObject.FindGameObjectsWithTag("Debug").SelectMany(g => g.Ge
 
 ## Session Reset
 
-Reset when variable name collisions or stale state occur:
+Reset when variable name collisions or stale state occur (`req.json`: `{"ns":"session","action":"reset"}`):
 
 ```bash
-python "$HOME/.unity-cli-plugin/current/cli/cs.py" command --json --project "$(pwd)" session reset
+cs command --json --input req.json
 ```
 
 ## Notes

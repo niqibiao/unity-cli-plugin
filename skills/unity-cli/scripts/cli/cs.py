@@ -14,7 +14,7 @@ _CLI_DIR = os.path.dirname(os.path.abspath(__file__))
 if os.path.dirname(_CLI_DIR) not in sys.path:
     sys.path.insert(0, os.path.dirname(_CLI_DIR))
 
-from cli import PACKAGE_NAME, DEFAULT_SOURCE, DEFAULT_EDITOR_PORT, DEFAULT_RUNTIME_PORT, save_pkg_path
+from cli import PACKAGE_NAME, DEFAULT_SOURCE, DEFAULT_EDITOR_PORT, DEFAULT_RUNTIME_PORT
 from cli.version_check import get_plugin_version, is_aligned
 
 
@@ -54,6 +54,15 @@ def find_project_root(hint=None):
     if _is_unity_root(cwd):
         return cwd
 
+    # D4: the CLI is committed inside the project (npx skills add --copy), so walk
+    # up from cs.py's own location — this anchors on the project that owns this
+    # skill copy, surviving an agent that cd'd into the skill dir or a cwd outside
+    # the project. Before _scan_children so a parent holding several Unity projects
+    # can't mis-select the first child. A global (-g) install finds nothing here.
+    for parent in Path(__file__).resolve().parents:
+        if _is_unity_root(parent):
+            return parent
+
     child = _scan_children(cwd)
     if child:
         return child
@@ -77,6 +86,34 @@ def detect_port(project_root):
     except (OSError, json.JSONDecodeError, ValueError):
         pass
     return None
+
+
+def _probe_port(ip, start, count, timeout=0.3):
+    """Return the first TCP-reachable port in [start, start+count), or None.
+
+    Runtime players don't write refresh_state.json, and the in-player console
+    service advances past taken ports on startup, so when --port is omitted we
+    probe the runtime range to find where it actually landed."""
+    import socket
+    for port in range(start, start + count):
+        try:
+            with socket.create_connection((ip, port), timeout=timeout):
+                return port
+        except OSError:
+            continue
+    return None
+
+
+def _read_input_text(src):
+    """Read an --input / --file source: stdin if src == '-', else the file (BOM-stripped).
+    Raises OSError / UnicodeError on read failure."""
+    return sys.stdin.read() if src == "-" else Path(src).read_text("utf-8-sig")
+
+
+def _read_input_json(src):
+    """Read and JSON-parse an --input source (see _read_input_text). Propagates the read
+    errors above, or json.JSONDecodeError on a malformed payload."""
+    return json.loads(_read_input_text(src))
 
 
 # ── Output helpers ─────────────────────────────────────────────────────
@@ -134,125 +171,6 @@ def _print_envelope(result, as_json):
 _PROGRESS_RE = re.compile(r"^(.+?):\s+(\d+)%\s+\((\d+)/(\d+)\)")
 
 
-def _clone_with_progress(source, dest, tag=None):
-    """Clone a git repo, printing progress at 25% intervals.
-
-    If *tag* is given, clones that tag specifically (shallow). The *source*
-    must be a bare URL — strip any '#fragment' before calling.
-    """
-    if tag:
-        print(f"Cloning {source} at {tag} (shallow)")
-        cmd = ["git", "clone", "--depth", "1", "--branch", tag, "--progress",
-               str(source), str(dest)]
-    else:
-        print(f"Cloning {source} (shallow)")
-        cmd = ["git", "clone", "--depth", "1", "--progress",
-               str(source), str(dest)]
-    print("Connecting...", flush=True)
-    try:
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-        )
-    except FileNotFoundError:
-        print("Error: git is not installed or not on PATH.", file=sys.stderr)
-        return 1
-    last_phase = None
-    last_milestone = -1
-    buf = ""
-    while True:
-        chunk = proc.stderr.read(1)
-        if not chunk:
-            break
-        ch = chunk.decode("utf-8", errors="replace")
-        if ch in ("\r", "\n"):
-            m = _PROGRESS_RE.match(buf.strip())
-            if m:
-                phase, pct = m.group(1), int(m.group(2))
-                milestone = pct // 25
-                if phase != last_phase or milestone > last_milestone:
-                    print(f"  {phase}: {pct}%")
-                    last_phase = phase
-                    last_milestone = milestone
-            buf = ""
-        else:
-            buf += ch
-    proc.wait()
-    if proc.returncode != 0:
-        print("Error: git clone failed. Ask the user to check network/proxy and retry manually.", file=sys.stderr)
-        return proc.returncode
-    print(f"Cloned to {dest}")
-    return 0
-
-
-def _pull_local(local_dir):
-    """Run `git pull --ff-only` in *local_dir*. Returns 0 on success."""
-    print(f"Checking for updates: {local_dir}")
-    try:
-        result = subprocess.run(
-            ["git", "-C", str(local_dir), "pull", "--ff-only"],
-            capture_output=True, text=True,
-        )
-    except FileNotFoundError:
-        print("Error: git is not installed or not on PATH.", file=sys.stderr)
-        return 1
-    if result.returncode != 0:
-        if result.stderr:
-            print(result.stderr.strip(), file=sys.stderr)
-        print("Error: git pull failed. The local clone may have diverged; "
-              "delete it and re-run setup.", file=sys.stderr)
-        return 1
-    stdout = result.stdout.strip()
-    if "Already up to date" in stdout or "Already up-to-date" in stdout:
-        print(f"Already up to date (local): {local_dir}")
-    else:
-        print(f"Updated (local): {local_dir}")
-    return 0
-
-
-def _checkout_tag_in_local(local_dir, tag):
-    """Fetch tags and checkout *tag* in the existing clone. Returns 0 on success."""
-    print(f"Fetching tags: {local_dir}")
-    try:
-        fetch = subprocess.run(
-            ["git", "-C", str(local_dir), "fetch", "--tags", "--quiet"],
-            capture_output=True, text=True,
-        )
-    except FileNotFoundError:
-        print("Error: git is not installed or not on PATH.", file=sys.stderr)
-        return 1
-    if fetch.returncode != 0:
-        if fetch.stderr:
-            print(fetch.stderr.strip(), file=sys.stderr)
-        print("Error: git fetch failed. Check network/proxy and retry.", file=sys.stderr)
-        return 1
-
-    head = subprocess.run(
-        ["git", "-C", str(local_dir), "rev-parse", "HEAD"],
-        capture_output=True, text=True,
-    )
-    target = subprocess.run(
-        ["git", "-C", str(local_dir), "rev-parse", f"{tag}^{{commit}}"],
-        capture_output=True, text=True,
-    )
-    if head.returncode == 0 and target.returncode == 0 and head.stdout.strip() == target.stdout.strip():
-        print(f"Already up to date (local, pinned to {tag}): {local_dir}")
-        return 0
-
-    co = subprocess.run(
-        ["git", "-C", str(local_dir), "checkout", "--quiet", tag],
-        capture_output=True, text=True,
-    )
-    if co.returncode != 0:
-        if co.stderr:
-            print(co.stderr.strip(), file=sys.stderr)
-        print(f"Error: git checkout {tag} failed.", file=sys.stderr)
-        return 1
-    print(f"Updated (local) to {tag}: {local_dir}")
-    return 0
-
-
 def _warn_version_mismatch(pkg_dir):
     """Print a warning if plugin and package versions are misaligned."""
     try:
@@ -269,39 +187,6 @@ def _warn_version_mismatch(pkg_dir):
         pass
 
 
-def _resolve_pin(source, no_pin):
-    """Decide what to write into the manifest and what tag to check out.
-
-    Returns (effective_source, target_tag, message_or_None) where:
-      - effective_source: the string to write to manifest (git method) or
-        the URL portion to clone (local method always strips the fragment).
-      - target_tag: tag name to use with `git clone --branch` / `git checkout`,
-        or None if no tag was resolved.
-      - message_or_None: a single line to print, or None for silence.
-    """
-    # User-supplied explicit pin (URL#tag) wins over both discovery and --no-pin.
-    if "#" in source:
-        frag = source.split("#", 1)[1]
-        return source, frag, f"Using explicit pin: {frag}"
-
-    if no_pin:
-        return source, None, None
-
-    from cli.version_check import (find_matching_tag, get_plugin_version,
-                                   parse_semver)
-    plugin_ver = get_plugin_version()
-    if not plugin_ver or plugin_ver == "unknown":
-        return source, None, "Warning: cannot determine plugin version \u2014 installing from HEAD"
-
-    tag = find_matching_tag(source, plugin_ver)
-    if tag:
-        return f"{source}#{tag}", tag, f"Pinning to {tag} (matched plugin {plugin_ver})"
-
-    sv = parse_semver(plugin_ver)
-    label = f"v{sv[0]}.{sv[1]}.*" if sv else "matching"
-    return source, None, f"Warning: no {label} tag found in {source} \u2014 installing from HEAD"
-
-
 def _new_session(root, args, pkg_dir):
     from cli.core_bridge import ConsoleSession
     return ConsoleSession(root, args.ip, args.port, args.mode, args.timeout,
@@ -309,555 +194,57 @@ def _new_session(root, args, pkg_dir):
                           compile_ip=args.compile_ip, compile_port=args.compile_port)
 
 
-_GITIGNORE_BLOCK_LINES = [
-    "# unity-cli-plugin: snippet stats are observability data, not project state",
-    ".unity-cli/snippets-stats.json",
-]
+def cmd_setup(root, args):
+    """Locate the Unity project and install the C# Console package into its manifest.
 
-
-def _ensure_gitignore_entry(project_root):
-    """Append snippet-stats lines to project .gitignore if not already present.
-
-    Idempotent: scans for the exact path line before appending.
-    """
-    gitignore = Path(project_root) / ".gitignore"
-    existing = ""
-    if gitignore.is_file():
-        try:
-            existing = gitignore.read_text(encoding="utf-8")
-        except OSError:
-            return  # silently skip — not fatal
-    target = ".unity-cli/snippets-stats.json"
-    for line in existing.splitlines():
-        if line.strip() == target:
-            return
-    block = ("\n" if existing and not existing.endswith("\n") else "") \
-            + "\n".join(_GITIGNORE_BLOCK_LINES) + "\n"
-    try:
-        with gitignore.open("a", encoding="utf-8") as f:
-            f.write(block)
-    except OSError:
-        pass
-
-
-_HOME_ROOT = Path.home() / ".unity-cli-plugin"
-_STORE_ROOT = _HOME_ROOT / "store"            # one full CLI per version: store/<version>/cli
-_SHIM_DIR = _HOME_ROOT / "current" / "cli"     # fixed path every skill invokes; holds the shim
-
-# The dispatch shim: tiny, stdlib-only, version-agnostic. It lives at the fixed
-# path every skill calls (~/.unity-cli-plugin/current/cli/cs.py) and runs the
-# right store/<version>/cli/cs.py in-process via runpy (no extra process, no
-# execve). Resolution: setup/install-cli run
-# the NEWEST installed version; every other command runs the project's PINNED
-# version verbatim (no drift) — and when there is no usable pin, the OPTIMAL one:
-# the store CLI aligned (major.minor) with the project's installed Unity package
-# (highest patch), else newest. Rewritten verbatim on every install-cli, so its
-# contract (store layout + pin file) must stay stable. `_UCP_STORE` overrides the
-# store root (tests only).
-_SHIM_SOURCE = '''\
-"""unity-cli-plugin dispatch shim. Auto-generated by `cs install-cli` — do not
-edit. Runs the project's pinned CLI version verbatim; setup/install-cli run the
-newest; with no usable pin, runs the version best matching the installed Unity
-package."""
-import json, os, re, runpy, sys
-from pathlib import Path
-
-_STORE = Path(os.environ.get("_UCP_STORE") or (Path.home() / ".unity-cli-plugin" / "store"))
-_PKG = "com.zh1zh1.csharpconsole"
-_SEMVER_RE = re.compile(r"(\\d+\\.\\d+\\.\\d+)")
-
-# Maintenance commands that ignore the project pin and always run the newest
-# installed version.
-_NEWEST_CMDS = ("setup", "install-cli")
-
-_VALUE_FLAGS = ("--project", "--ip", "--port", "--mode",
-                "--compile-ip", "--compile-port", "--timeout")
-
-
-def _semver(v):
-    out = []
-    for part in str(v).split("."):
-        digits = "".join(c for c in part if c.isdigit())
-        out.append(int(digits) if digits else 0)
-    return tuple(out) or (0,)
-
-
-def _project_from_argv(argv):
-    for i, a in enumerate(argv):
-        if a == "--project" and i + 1 < len(argv):
-            return argv[i + 1]
-        if a.startswith("--project="):
-            return a.split("=", 1)[1]
-    return os.getcwd()
-
-
-def _subcommand(argv):
-    # First positional token (skipping shared flags and their values) — the cs.py
-    # subcommand. Parsing it (not scanning argv membership) keeps a flag value or a
-    # later arg equal to "setup" from being mistaken for the setup subcommand.
-    i = 0
-    while i < len(argv):
-        a = argv[i]
-        if a.startswith("-"):
-            i += 2 if ("=" not in a and a in _VALUE_FLAGS) else 1
-            continue
-        return a
-    return None
-
-
-def _is_unity_root(d):
-    return (d / "Assets").is_dir() and (d / "ProjectSettings").is_dir()
-
-
-def _unity_root(project):
-    # Mirror cs.py's find_project_root: the Unity root holds the pin and the
-    # package, even when --project is a subdir (e.g. Assets/) or a parent.
-    try:
-        p = Path(project).resolve()
-        if _is_unity_root(p):
-            return p
-        if p.is_dir():
-            for d in sorted(p.iterdir()):
-                if d.is_dir() and _is_unity_root(d):
-                    return d
-        for parent in p.parents:
-            if _is_unity_root(parent):
-                return parent
-        return p
-    except OSError:
-        return Path(project)
-
-
-def _entries():
-    if not _STORE.is_dir():
-        return {}
-    return {p.name: p for p in _STORE.iterdir() if (p / "cli" / "cs.py").is_file()}
-
-
-def _read_pin(root):
-    try:
-        return json.loads((root / ".unity-cli" / "cli.json").read_text("utf-8")).get("version")
-    except (OSError, ValueError, AttributeError):
-        return None
-
-
-def _pkg_json_version(d):
-    try:
-        return json.loads((d / "package.json").read_text("utf-8")).get("version")
-    except (OSError, ValueError, AttributeError):
-        return None
-
-
-def _pkg_version(root):
-    # Installed-package version, used to pick an aligned CLI when there is no
-    # usable pin. packages-lock.json is authoritative — it records the version
-    # Unity actually resolved (a bare semver for registry deps, a URL#vX.Y.Z for
-    # git deps). Fall back to a manifest file: dep, an embedded package, then
-    # PackageCache. Returns a version string or None — and fails closed (None)
-    # when PackageCache holds multiple distinct versions, rather than guessing by
-    # filesystem order (a stale cache entry would mis-dispatch the CLI).
-    try:
-        dep = json.loads((root / "Packages" / "packages-lock.json").read_text("utf-8")) \
-            .get("dependencies", {}).get(_PKG, {})
-        m = _SEMVER_RE.search(str(dep.get("version", "")))
-        if m:
-            return m.group(1)
-    except (OSError, ValueError, AttributeError):
-        pass
-    direct = []
-    try:
-        val = json.loads((root / "Packages" / "manifest.json").read_text("utf-8")) \
-            .get("dependencies", {}).get(_PKG, "")
-        if isinstance(val, str) and val.startswith("file:"):
-            direct.append(root / "Packages" / val[5:])
-    except (OSError, ValueError, AttributeError):
-        pass
-    direct.append(root / "Packages" / _PKG)
-    for c in direct:
-        v = _pkg_json_version(c)
-        if v:
-            return v
-    versions = set()
-    cache = root / "Library" / "PackageCache"
-    try:
-        if cache.is_dir():
-            for d in sorted(cache.iterdir()):
-                if d.name == _PKG or d.name.startswith(_PKG + "@"):
-                    v = _pkg_json_version(d)
-                    if v:
-                        versions.add(v)
-    except OSError:
-        pass
-    return versions.pop() if len(versions) == 1 else None
-
-
-def _optimal(entries, root):
-    # No usable pin: run the version best matching the installed package — the store
-    # CLI aligned (major.minor) with it, highest patch — else the newest.
-    pv = _pkg_version(root)
-    if pv:
-        mm = ".".join(str(pv).split(".")[:2])
-        aligned = [v for v in entries if ".".join(v.split(".")[:2]) == mm]
-        if aligned:
-            return entries[max(aligned, key=_semver)]
-    return entries[max(entries, key=_semver)]
-
-
-def main():
-    argv = sys.argv[1:]
-    entries = _entries()
-    if not entries:
-        print("unity-cli: no CLI installed in the store. Run the unity-cli-setup skill first.",
-              file=sys.stderr)
-        sys.exit(1)
-    if _subcommand(argv) in _NEWEST_CMDS:
-        target = entries[max(entries, key=_semver)]      # maintenance: newest
-    else:
-        root = _unity_root(_project_from_argv(argv))
-        want = _read_pin(root)
-        target = entries.get(want) if want else None     # pinned + present → verbatim
-        if target is None:                               # no pin, or pin not installed
-            target = _optimal(entries, root)
-    runpy.run_path(str(target / "cli" / "cs.py"), run_name="__main__")
-
-
-main()
-'''
-
-
-def _write_shim():
-    """(Re)write the dispatch shim to the fixed path skills call, then strip any
-    non-shim leftovers there (the pre-store layout kept a whole CLI copy in this
-    dir). Raises OSError if the shim itself cannot be written — that path is
-    load-bearing (every skill invokes it). The legacy cleanup stays best-effort."""
-    import shutil
-    _SHIM_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = _SHIM_DIR / "cs.py.tmp"
-    tmp.write_text(_SHIM_SOURCE, "utf-8")
-    os.replace(tmp, _SHIM_DIR / "cs.py")
-    # Best-effort cleanup: the fixed dir holds only the shim; drop anything else —
-    # legacy full-CLI siblings from the pre-store layout, a stray __pycache__, etc.
-    try:
-        for p in _SHIM_DIR.iterdir():
-            if p.name == "cs.py":
-                continue
-            try:
-                if p.is_dir():
-                    shutil.rmtree(p)
-                else:
-                    p.unlink()
-            except OSError:
-                pass
-        (_HOME_ROOT / "current" / ".source.json").unlink()  # stale legacy marker
-    except OSError:
-        pass
-
-
-def _shim_then(rc, msg):
-    """Refresh the dispatch shim, then return (rc, msg) — so every _perform_copy
-    success path leaves a current shim. If the shim (the load-bearing fixed path)
-    can't be written, report failure even though the store copy itself succeeded:
-    a silent shim failure would leave skills with no usable entry point."""
-    try:
-        _write_shim()
-    except OSError as e:
-        return 1, (f"Error: CLI store updated but the dispatch shim at "
-                   f"{_SHIM_DIR / 'cs.py'} could not be written: {e}")
-    return rc, msg
-
-
-def _write_project_pin(root, target_tag=None):
-    """Pin a project to the CLI version that set it up, so the shim dispatches the
-    protocol-aligned CLI for this project on every later call.
-
-    *target_tag* is the package version setup just selected (e.g. ``v1.5.2`` from
-    ``--source URL#v1.5.2``, or the discovered tag). When the running CLI is NOT
-    major.minor-aligned with it — the user deliberately installed a package off
-    the running CLI's line — writing a verbatim pin would freeze that mismatch and
-    bypass the shim's package-aligned dispatch. In that case clear any stale pin
-    instead, so the shim's `_optimal` fallback runs a compatible store CLI once
-    Unity resolves the package. An unknown tag (HEAD / no-pin install) is treated
-    as aligned. Best-effort."""
-    running = get_plugin_version(_CLI_DIR)
-    pin_file = Path(root) / ".unity-cli" / "cli.json"
-    if target_tag and not is_aligned(running, target_tag):
-        try:
-            pin_file.unlink()
-        except OSError:
-            pass
-        return
-    try:
-        pin_file.parent.mkdir(parents=True, exist_ok=True)
-        pin_file.write_text(
-            json.dumps({"version": running}, ensure_ascii=False, indent=2) + "\n",
-            "utf-8")
-    except OSError:
-        pass
-
-
-def _cli_fingerprint(cli_dir, version=None):
-    """Content fingerprint of a cli/ tree: plugin version + sha256 of every *.py
-    (relpath + bytes). Content-based, not mtime-based, so it is stable across
-    copies, git operations, and filesystem mtime quirks — only an actual code
-    change or version bump moves it, which is exactly when the stable copy should
-    re-sync from its source."""
-    cli_dir = Path(cli_dir)
-    h = hashlib.sha256()
-    h.update((version if version is not None else get_plugin_version(cli_dir)).encode("utf-8"))
-    for f in sorted(cli_dir.rglob("*.py")):
-        try:
-            data = f.read_bytes()
-        except OSError:
-            continue
-        h.update(f.relative_to(cli_dir).as_posix().encode("utf-8"))
-        h.update(b"\0")
-        h.update(data)
-    return h.hexdigest()[:16]
-
-
-def _perform_copy(src, *, force):
-    """Deposit a cli/ tree into the per-version store (store/<version>/cli), mirror
-    the plugin manifest, write a .source.json marker (source path + content
-    fingerprint), and (re)write the dispatch shim. Returns (rc, message) and never
-    prints — the caller decides whether to surface it.
-
-    Idempotent: skips the copy when the store already matches the source (version +
-    content), so a plugin upgrade or code edit re-copies but an unchanged source
-    does not."""
-    import shutil
-    src = Path(src)
-    version = get_plugin_version(src)
-    dest_root = _STORE_ROOT / version
-    dest = dest_root / "cli"
-
-    if src.resolve() == dest.resolve():
-        return _shim_then(0, f"CLI already running from install location: {dest}")
-
-    stamp = {"version": version, "src": str(src.resolve()),
-             "fingerprint": _cli_fingerprint(src, version=version)}
-    marker = dest_root / ".source.json"
-
-    if not force and marker.is_file() and (dest / "cs.py").is_file():
-        try:
-            if json.loads(marker.read_text("utf-8")) == stamp:
-                return _shim_then(0, f"CLI already installed (up to date): {dest}")
-        except (OSError, json.JSONDecodeError):
-            pass
-
-    try:
-        dest_root.mkdir(parents=True, exist_ok=True)
-        tmp = dest_root / "cli.tmp"
-        old = dest_root / "cli.old"
-        for p in (tmp, old):
-            shutil.rmtree(p, ignore_errors=True)  # no-op if absent
-        # Skip __pycache__ so the copy can never execute stale .pyc (whose
-        # preserved mtime would otherwise make Python prefer it over the .py).
-        shutil.copytree(src, tmp, ignore=shutil.ignore_patterns("__pycache__"))
-        # Move-aside swap: dest is always present as a whole tree (old or new),
-        # never half-deleted, so a concurrent reader can't catch a broken copy.
-        if dest.exists():
-            os.replace(dest, old)
-        os.replace(tmp, dest)
-        if old.exists():
-            shutil.rmtree(old, ignore_errors=True)
-        # Mirror the plugin manifest so get_plugin_version() still
-        # resolve from the stable path (otherwise `setup` run from here loses
-        # version pinning and alignment checks).
-        src_manifest = src.parent / ".claude-plugin" / "plugin.json"
-        if src_manifest.is_file():
-            manifest_dest_dir = dest_root / ".claude-plugin"
-            manifest_dest_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src_manifest, manifest_dest_dir / "plugin.json")
-        marker.write_text(json.dumps(stamp, ensure_ascii=False, indent=2) + "\n", "utf-8")
-    except OSError as e:
-        return 1, f"Error: failed to install CLI to {dest}: {e}"
-    return _shim_then(0, f"Installed CLI to {dest} (version {version})")
-
-
-def cmd_install_cli(args):
-    rc, msg = _perform_copy(_CLI_DIR, force=args.force)
-    print(msg, file=sys.stderr if rc else sys.stdout)
-    return rc
-
-
-def _maybe_self_refresh(argv, maintenance=False):
-    """Keep a store entry in sync with its source — but only within its own
-    version. A store/<version> copy refreshes from its recorded source only when
-    the source is still that same version with changed content (a dev edit); once
-    the source moves to a new version, this entry is a final snapshot and is left
-    untouched (see the version guard below).
-
-    When a stale copy detects its source changed, it re-execs the source CLI as a
-    child flagged with `_UCP_REFRESH_DEST`. That child refreshes the copy (nothing
-    is running from it — the refreshing process executes from the source, never the
-    copy directory it swaps, which is what makes the overwrite safe on Windows),
-    then returns so the original command proceeds from current code. The child
-    never re-delegates: it short-circuits on the flag, and the source has no
-    `.source.json` marker anyway.
-
-    Silent and best-effort: a no-op when not the stable copy, when the source is
-    gone, or already handed off; degrades to running the current copy on any
-    error rather than failing the command."""
-    if os.environ.get("_UCP_REFRESH_DEST"):
-        rc, msg = _perform_copy(_CLI_DIR, force=True)
-        if rc != 0 and maintenance:
-            # Picking up a newer source for `setup` failed to deposit/shim — fail
-            # now rather than letting setup mutate the project behind a broken
-            # entry point. Runtime refreshes stay best-effort (degrade silently to
-            # the current copy).
-            print(msg, file=sys.stderr)
-            sys.exit(rc)
-        return
-    marker = Path(_CLI_DIR).parent / ".source.json"   # only the copy has this
-    if not marker.is_file():
-        return
-    try:
-        info = json.loads(marker.read_text("utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return
-    src_cs = Path(info.get("src", "")) / "cs.py"
-    if not src_cs.is_file():
-        return  # source moved/removed (e.g. versioned cache pruned) — can't refresh here
-    src_version = get_plugin_version(src_cs.parent)
-    same_version = src_version == info.get("version")
-    if not same_version and not maintenance:
-        # A runtime command must not be hijacked across versions: a project pinned
-        # to this entry stays on it even when the source has moved to a new version
-        # (which lands in its own store/<version> via install-cli/setup). Only the
-        # maintenance path (`setup`) may pick up a newer source — see below.
-        return
-    if same_version and _cli_fingerprint(src_cs.parent, version=src_version) == info.get("fingerprint"):
-        return  # already up to date (same version, unchanged content)
-    # Delegate to the source: it deposits its version into store/<src_version> and
-    # runs the command as that version. Same-version → a dev-edit refresh in place;
-    # cross-version under `setup` → picks up a newer source so the upgrade takes.
-    # (execve would be cleaner but segfaults under Windows Python, so use a child
-    # process and exit with its status.)
-    try:
-        proc = subprocess.run(
-            [sys.executable, str(src_cs)] + list(argv),
-            env=dict(os.environ, _UCP_REFRESH_DEST="1"),
-        )
-    except OSError:
-        return  # degrade: fall through and run the (stale) copy
-    sys.exit(proc.returncode)
-
-
-def cmd_setup(root, args, agent_root=None):
-    """Install/update the Unity package in the project manifest.
-
-    Returns (rc, installed, tag): installed is True only when the package was
-    actually written / cloned / updated, False for the "already installed" no-op;
-    tag is the package version setup selected (e.g. ``v1.5.2``), or None for an
-    unpinned / HEAD install. main() writes the project pin only when installed is
-    True, and only when the running CLI is aligned with tag (see _write_project_pin)."""
+    When com.zh1zh1.csharpconsole is absent from Packages/manifest.json, setup adds it
+    (the git URL / file: path in --source, default DEFAULT_SOURCE) and tells the user to
+    open Unity so the Package Manager resolves it. When it's already present, setup is a
+    no-op that warns on a CLI/package major.minor mismatch (pass --update to force Unity
+    to re-resolve). The source is written as-is — no version pinning.
+    Returns 0 on success, 1 on error."""
     if root is None:
-        print("Error: no Unity project found. Use --project to specify the path.", file=sys.stderr)
-        return 1, False, None
+        print("Error: no Unity project found (need Assets/ + ProjectSettings/).",
+              file=sys.stderr)
+        return 1
     manifest = root / "Packages" / "manifest.json"
     if not manifest.exists():
         print(f"Error: {manifest} not found.", file=sys.stderr)
-        return 1, False, None
+        return 1
 
-    data = json.loads(manifest.read_text("utf-8"))
+    print(f"Unity project : {root}")
+    try:
+        data = json.loads(manifest.read_text("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as e:
+        print(f"Error: failed to read {manifest}: {e}", file=sys.stderr)
+        return 1
     deps = data.setdefault("dependencies", {})
+    source = getattr(args, "source", None) or DEFAULT_SOURCE
 
-    raw_source = args.source or DEFAULT_SOURCE
-    method = args.method or "git"
-
-    # Resolve the pin lazily: paths that early-return (e.g. "already installed"
-    # without --update) skip the network call and avoid printing a misleading
-    # "Pinning to ..." line for an action that won't happen.
-    _pin_cache = {"done": False, "eff": raw_source, "tag": None}
-    def _get_pin():
-        if not _pin_cache["done"]:
-            eff, tag, msg = _resolve_pin(raw_source, getattr(args, "no_pin", False))
-            if msg:
-                print(msg)
-            _pin_cache.update(eff=eff, tag=tag, done=True)
-        return _pin_cache["eff"], _pin_cache["tag"]
-
-    if method == "local":
-        existing = deps.get(PACKAGE_NAME, "")
-        if existing.startswith("file:"):
-            local_dir = (manifest.parent / existing[len("file:"):]).resolve()
+    if PACKAGE_NAME in deps and not getattr(args, "update", False):
+        print(f"package       : already in manifest ({deps[PACKAGE_NAME]})")
+        from cli.core_bridge import find_package_dir
+        pkg_dir = find_package_dir(root)
+        if pkg_dir:
+            _warn_version_mismatch(pkg_dir)
+            print("Ready. Run `cs status` to verify the live service.")
         else:
-            # Use existing file: deps (outside Packages/) as reference path
-            ref_parent = None
-            for pkg, val in deps.items():
-                if pkg == PACKAGE_NAME or not isinstance(val, str):
-                    continue
-                if not val.startswith("file:"):
-                    continue
-                rel = val[len("file:"):]
-                if rel.startswith("Packages/") or rel.startswith("Packages\\"):
-                    continue
-                ref_parent = Path(rel).parent
-                break
-            if ref_parent is not None:
-                local_dir = (manifest.parent / ref_parent / PACKAGE_NAME).resolve()
-                print(f"Using reference path from existing local package: {ref_parent.as_posix()}/")
-            else:
-                local_dir = root / "Packages" / PACKAGE_NAME
-        rel_path = Path(os.path.relpath(local_dir, manifest.parent)).as_posix()
-        dep_value_local = f"file:{rel_path}"
-        pkg_json = local_dir / "package.json"
-        if pkg_json.is_file():
-            if PACKAGE_NAME in deps and deps[PACKAGE_NAME] == dep_value_local:
-                _, target_tag = _get_pin()
-                if target_tag:
-                    rc = _checkout_tag_in_local(local_dir, target_tag)
-                else:
-                    rc = _pull_local(local_dir)
-                if rc != 0:
-                    return rc, False, None
-                _warn_version_mismatch(local_dir)
-                return 0, True, _pin_cache["tag"]
-            # Directory exists but manifest points elsewhere (e.g. git) — update below
-        else:
-            # Remove incomplete clone leftovers before retrying
-            if local_dir.exists():
-                import shutil
-                shutil.rmtree(local_dir)
-            local_dir.parent.mkdir(parents=True, exist_ok=True)
-            _, target_tag = _get_pin()
-            clone_url = raw_source.split("#", 1)[0]
-            rc = _clone_with_progress(clone_url, local_dir, tag=target_tag)
-            if rc != 0:
-                return 1, False, None
+            print("Open Unity Editor to let the Package Manager resolve it, then run `cs status`.")
+        return 0
 
-        dep_value = dep_value_local
-    else:
-        if PACKAGE_NAME in deps:
-            if not getattr(args, "update", False):
-                print(f"Already installed: {PACKAGE_NAME}")
-                try:
-                    from cli.core_bridge import find_package_dir
-                    pkg_dir = find_package_dir(root, agent_root)
-                    if pkg_dir:
-                        _warn_version_mismatch(pkg_dir)
-                except Exception:
-                    pass
-                # No-op: package unchanged → write no pin (a mismatch is warned for
-                # the user to --update). An unpinned project still runs: the shim
-                # auto-picks the store CLI matching its installed package.
-                _ensure_gitignore_entry(root)
-                return 0, False, None
-            # --update: remove and re-add to force Unity re-resolve
-            print(f"Forcing re-resolve of {PACKAGE_NAME} ...")
-            del deps[PACKAGE_NAME]
-        effective_source, _ = _get_pin()
-        dep_value = effective_source
+    if getattr(args, "update", False) and PACKAGE_NAME in deps:
+        print(f"Forcing re-resolve of {PACKAGE_NAME} ...")
+        del deps[PACKAGE_NAME]
 
-    deps[PACKAGE_NAME] = dep_value
-    manifest.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", "utf-8")
-    print(f"Added {PACKAGE_NAME} to {manifest}")
-    _ensure_gitignore_entry(root)
-    # Cache the resolved package path for subsequent CLI commands
-    if method == "local":
-        save_pkg_path(agent_root, local_dir)
-    print("Open Unity Editor to resolve the package, then run: cs status")
-    return 0, True, _pin_cache["tag"]
+    deps[PACKAGE_NAME] = source
+    try:
+        manifest.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", "utf-8")
+    except OSError as e:
+        print(f"Error: failed to write {manifest}: {e}", file=sys.stderr)
+        return 1
+    print(f"package       : added to manifest ({source})")
+    print("Open Unity Editor to let the Package Manager resolve the package, then run `cs status`.")
+    return 0
 
 
 def _cmd_status_json(root, args, agent_root=None):
@@ -1036,51 +423,9 @@ def cmd_status(root, args, agent_root=None):
             kv_s = parse_semver(package_ver)
             pl = f"{pv_s[0]}.{pv_s[1]}.x" if pv_s else plugin_ver
             kl = f"{kv_s[0]}.{kv_s[1]}.x" if kv_s else package_ver
-            print(f"\u26a0 plugin {pl} \u2260 package {kl} \u2014 run `cs check-update` for details")
+            print(f"\u26a0 plugin {pl} \u2260 package {kl} \u2014 align the package, then re-run `cs setup`")
     except Exception:
         pass  # version check is best-effort, never block status
-    return 0
-
-
-def cmd_check_update(root, args, agent_root=None):
-    from cli.core_bridge import find_package_dir
-    pkg_dir = find_package_dir(root, agent_root) if root else None
-
-    if not pkg_dir:
-        print("package: NOT FOUND (run 'cs setup' first)")
-        return 1
-
-    source = getattr(args, "source", None) or DEFAULT_SOURCE
-    from cli.version_check import check_versions, parse_semver
-    info = check_versions(pkg_dir, source, timeout=5)
-
-    if args.as_json:
-        json.dump({"ok": True, "exitCode": 0, **info}, sys.stdout, ensure_ascii=False, indent=2)
-        print()
-        return 0
-
-    print(f"plugin:    {info['plugin']}")
-    print(f"package:   {info['package'] or 'unknown'}")
-    print(f"remote:    {info['remote'] or 'unavailable (network error)'}")
-
-    if info["aligned"]:
-        pv = info["package"] or "?"
-        sv = parse_semver(pv)
-        label = f"{sv[0]}.{sv[1]}.x" if sv else pv
-        print(f"alignment: \u2713 aligned ({label})")
-    else:
-        pv_s = parse_semver(info["plugin"])
-        kv_s = parse_semver(info["package"])
-        pl = f"{pv_s[0]}.{pv_s[1]}.x" if pv_s else info["plugin"]
-        kl = f"{kv_s[0]}.{kv_s[1]}.x" if kv_s else info["package"]
-        print(f"alignment: \u26a0 plugin {pl} \u2260 package {kl}")
-
-    if info["updateAvailable"]:
-        print(f"update:    \u26a0 package {info['package']} \u2192 {info['remote']} available")
-        print("hint:      run `cs setup --update` to update the package")
-    else:
-        print(f"update:    \u2713 up to date")
-
     return 0
 
 
@@ -1125,43 +470,14 @@ def _filter_commands_by_type(result, type_filter):
 # ── Catalog commands ───────────────────────────────────────────────────
 
 def _resolve_catalog_path(root, args):
-    """Resolve where to write/read the catalog for this Unity project.
-
-    Order of precedence:
-    1. --catalog-path arg (and persist it)
-    2. cached path from previous run
-    3. interactive prompt (only if stdin is a TTY and not in --json mode)
-    4. default: {project}/.unity-cli/catalog.json (and persist it)
-    """
-    from cli import (load_catalog_path, save_catalog_path,
-                     default_catalog_path)
-
+    """Catalog file location: --catalog-path for this call only, else the project
+    default {project}/.unity-cli/catalog.json. No persistence — the default is
+    stable (and committed), so there is nothing to remember between runs."""
+    from cli import default_catalog_path
     explicit = getattr(args, "catalog_path", None)
     if explicit:
-        cat_file = Path(explicit).expanduser().resolve()
-        save_catalog_path(root, cat_file)
-        return cat_file
-
-    cached = load_catalog_path(root)
-    if cached:
-        return cached
-
-    default = default_catalog_path(root)
-    interactive = sys.stdin.isatty() and not args.as_json
-    if interactive:
-        prompt = (f"Where should the custom command catalog be stored?\n"
-                  f"  [Enter to accept default: {default}]\n"
-                  f"  Path: ")
-        try:
-            answer = input(prompt).strip()
-        except (EOFError, KeyboardInterrupt):
-            answer = ""
-        chosen = Path(answer).expanduser().resolve() if answer else default
-    else:
-        chosen = default
-
-    save_catalog_path(root, chosen)
-    return chosen
+        return Path(explicit).expanduser().resolve()
+    return default_catalog_path(root)
 
 
 def cmd_catalog_sync(root, args, agent_root):
@@ -1281,24 +597,13 @@ def cmd_catalog_sync(root, args, agent_root):
 
 
 def cmd_catalog_list(root, args):
-    from cli import load_catalog_path
+    from cli import default_catalog_path
 
     explicit = getattr(args, "catalog_path", None)
     if explicit:
         cat_file = Path(explicit).expanduser().resolve()
     else:
-        cat_file = load_catalog_path(root)
-
-    if cat_file is None:
-        msg = ("No catalog path configured for this project. "
-               "Run 'cs catalog sync' first or pass --catalog-path.")
-        if args.as_json:
-            json.dump({"ok": False, "exitCode": 1, "summary": msg},
-                      sys.stdout, ensure_ascii=False, indent=2)
-            print()
-        else:
-            print(f"Error: {msg}", file=sys.stderr)
-        return 1
+        cat_file = default_catalog_path(root)
 
     if not cat_file.is_file():
         msg = f"Catalog file does not exist: {cat_file}. Run 'cs catalog sync' first."
@@ -1435,9 +740,6 @@ def cmd_snippets_add(root, args, agent_root):
         )
         return 1
 
-    # `add` just initialized snippets-stats.json; ensure it is gitignored even
-    # on projects where `cs setup` was never re-run after this feature landed.
-    _ensure_gitignore_entry(root)
     _print_envelope(
         {"ok": True, "exitCode": 0,
          "summary": f"registered {args.snippet_id}"
@@ -1490,20 +792,26 @@ def cmd_snippets_use(root, args, agent_root):
               file=sys.stderr)
 
     arg_values = {}
-    if args.snippet_args:
+    if getattr(args, "input", None):
         try:
-            arg_values = json.loads(args.snippet_args)
+            arg_values = _read_input_json(args.input)
+        except (OSError, UnicodeError) as e:
+            _print_envelope(
+                {"ok": False, "exitCode": 1, "summary": f"--input: {e}"},
+                args.as_json,
+            )
+            return 1
         except json.JSONDecodeError as e:
             _print_envelope(
                 {"ok": False, "exitCode": 1,
-                 "summary": f"--args is not valid JSON: {e}"},
+                 "summary": f"--input is not valid JSON: {e}"},
                 args.as_json,
             )
             return 1
         if not isinstance(arg_values, dict):
             _print_envelope(
                 {"ok": False, "exitCode": 1,
-                 "summary": "--args must decode to a JSON object"},
+                 "summary": "--input must decode to a JSON object"},
                 args.as_json,
             )
             return 1
@@ -1563,11 +871,6 @@ def cmd_snippets_use(root, args, agent_root):
                   f"after a qualifying failure streak "
                   f"(see `cs snippets stats --id {args.snippet_id}`)",
                   file=sys.stderr)
-
-    # use just wrote snippets-stats.json; keep it gitignored even on checkouts
-    # where setup never ran (committed snippets/audit, fresh clone).
-    if recorded:
-        _ensure_gitignore_entry(root)
 
     if args.as_json:
         json.dump(response, sys.stdout, ensure_ascii=False, indent=2)
@@ -2258,13 +1561,85 @@ def cmd_snippets_show(root, args):
 
 # ── Main ────────────────────────────────────────────────────────────────
 
-def main():
-    if not (len(sys.argv) > 1 and sys.argv[1] == "install-cli"):
-        # `setup` is the maintenance/upgrade path: let it pick up a newer source
-        # even across versions. Other commands must NOT cross-version-refresh —
-        # that would hijack a project pinned to this store entry.
-        _maybe_self_refresh(sys.argv[1:], maintenance=(len(sys.argv) > 1 and sys.argv[1] == "setup"))
+def _apply_conn_opts(parser, args, payload):
+    """Copy connection opts from the --input JSON onto args, but only when the user
+    didn't pass the matching CLI flag (SUPPRESS leaves unpassed shared args unset),
+    so an explicit flag always wins over the JSON. A value that can't be cast fails the
+    command (like an invalid CLI flag would) instead of silently falling back."""
+    for key, attr, cast in (("ip", "ip", str), ("port", "port", int),
+                            ("mode", "mode", str), ("timeout", "timeout", int),
+                            ("compileIp", "compile_ip", str),
+                            ("compilePort", "compile_port", int)):
+        if key in payload and not hasattr(args, attr):
+            try:
+                setattr(args, attr, cast(payload[key]))
+            except (TypeError, ValueError):
+                parser.error(f'--input field "{key}" must be a valid {cast.__name__}')
 
+
+def _resolve_input(parser, args):
+    """Populate a command's params from --input: a single JSON object (or array, for
+    batch) read from a file, or '-' for stdin. The agent writes the JSON with its file
+    tool, so embedded quotes / newlines in C# code or command args never transit the
+    shell and need no escaping. This is the only way to pass params to exec / command /
+    batch / complete (exec also accepts --file for raw C#). Other commands that take
+    --input (e.g. snippets use) read it in their own handler."""
+    if args.cmd not in ("exec", "command", "batch", "complete"):
+        return
+    src = getattr(args, "input", None)
+    if src is None:
+        return
+    try:
+        payload = _read_input_json(src)
+    except (OSError, UnicodeError) as e:
+        parser.error(f"--input: {e}")
+    except json.JSONDecodeError as e:
+        parser.error(f"--input: invalid JSON ({e})")
+
+    cmd = args.cmd
+    if cmd == "exec":
+        if not isinstance(payload, dict) or not isinstance(payload.get("code"), str):
+            parser.error('--input for exec must be a JSON object with a string "code" field')
+        args.code = payload["code"]
+        _apply_conn_opts(parser, args, payload)
+    elif cmd == "command":
+        if not isinstance(payload, dict):
+            parser.error("--input for command must be a JSON object")
+        ns = payload.get("ns", payload.get("namespace"))
+        action = payload.get("action")
+        if not isinstance(ns, str) or not isinstance(action, str):
+            parser.error('--input for command needs string "ns" and "action"')
+        args.namespace = ns
+        args.action = action
+        cmd_args = payload.get("args")
+        if cmd_args is None or isinstance(cmd_args, str):
+            args.args = cmd_args
+        else:
+            args.args = json.dumps(cmd_args, ensure_ascii=False)
+        _apply_conn_opts(parser, args, payload)
+    elif cmd == "batch":
+        if isinstance(payload, list):
+            items = payload
+        elif isinstance(payload, dict):
+            items = payload.get("commands", payload.get("items"))
+            if "stopOnError" in payload:
+                args.stop_on_error = bool(payload["stopOnError"])
+            _apply_conn_opts(parser, args, payload)
+        else:
+            parser.error("--input for batch must be a JSON array or object")
+        if not isinstance(items, list):
+            parser.error('--input for batch needs a "commands" array (or a bare JSON array)')
+        args.commands = json.dumps(items, ensure_ascii=False)
+    elif cmd == "complete":
+        if (not isinstance(payload, dict) or not isinstance(payload.get("code"), str)
+                or not isinstance(payload.get("cursor"), int) or isinstance(payload.get("cursor"), bool)):
+            parser.error('--input for complete must be a JSON object with "code" (string) and "cursor" (int)')
+        args.code = payload["code"]
+        args.cursor = payload["cursor"]
+        _apply_conn_opts(parser, args, payload)
+
+
+def main():
     # Shared flags available on every subcommand.
     # Use SUPPRESS so subparser parses don't overwrite values supplied to the
     # top-level parser (argparse parents+subparsers footgun).  Defaults are
@@ -2286,35 +1661,26 @@ def main():
                         help="Full JSON output with all diagnostic fields")
 
     p = argparse.ArgumentParser(prog="cs", description="Unity C# Console CLI", parents=[shared])
-    # metavar set so the auto-generated {choices} list (which would still leak the
-    # hidden `install-cli` name) is replaced by a generic placeholder.
     sub = p.add_subparsers(dest="cmd", metavar="<command>")
 
-    sp_setup = sub.add_parser("setup", parents=[shared], help="Install Unity package")
-    sp_setup.add_argument("--source", help="Git URL (default: GitHub repo)")
-    sp_setup.add_argument("--method", choices=["local", "git"], default="git",
-                          help="git = Unity resolves URL, local = clone to Packages/ (default: git)")
+    sp_setup = sub.add_parser("setup", parents=[shared],
+                   help="Install the C# Console package into the project manifest (version-check if already present)")
+    sp_setup.add_argument("--source", default=None,
+                          help=f"Package git URL or file: path (default: {DEFAULT_SOURCE})")
     sp_setup.add_argument("--update", action="store_true",
-                          help="Update existing installation instead of skipping")
-    sp_setup.add_argument("--no-pin", dest="no_pin", action="store_true",
-                          help="Install from HEAD of the default branch instead of pinning to a tag matching the plugin major.minor")
-
-    # Internal bootstrap — called only by unity-cli-setup skill. No help= arg
-    # means argparse skips it in the subcommand listing entirely.
-    sp_install = sub.add_parser("install-cli", parents=[shared])
-    sp_install.add_argument("--force", action="store_true", help=SUPPRESS)
+                          help="Force Unity to re-resolve the package (delete + re-add the manifest entry)")
 
     sub.add_parser("status", parents=[shared], help="Package + connection status")
 
     sp_exec = sub.add_parser("exec", parents=[shared], help="Execute C# code")
-    sp_exec.add_argument("code", nargs="?", help="C# code to execute (inline; omit when using --file)")
     sp_exec.add_argument("--file", "-f", dest="file",
-                         help="Read C# code from a file")
+                         help="Read raw C# code from a file")
+    sp_exec.add_argument("--input", "-i", dest="input", default=None,
+                         help='JSON params file (or - for stdin): {"code": "..."}; avoids shell-quoting')
 
     sp_cmd = sub.add_parser("command", parents=[shared], help="Run framework command")
-    sp_cmd.add_argument("namespace", help="Command namespace")
-    sp_cmd.add_argument("action", help="Command action")
-    sp_cmd.add_argument("args", nargs="?", default=None, help="Arguments (JSON)")
+    sp_cmd.add_argument("--input", "-i", dest="input", default=None, required=True,
+                        help='JSON params file (or - for stdin): {"ns":..,"action":..,"args":{..}}; avoids shell-quoting')
 
     sub.add_parser("health", parents=[shared], help="Service health check")
 
@@ -2331,15 +1697,14 @@ def main():
                         dest="cmd_type", help="Filter by command type (default: all)")
 
     sp_cmp = sub.add_parser("complete", parents=[shared], help="Get completions")
-    sp_cmp.add_argument("code")
-    sp_cmp.add_argument("cursor", type=int)
+    sp_cmp.add_argument("--input", "-i", dest="input", default=None, required=True,
+                        help='JSON params file (or - for stdin): {"code": "...", "cursor": N}; avoids shell-quoting')
 
     sp_batch = sub.add_parser("batch", parents=[shared], help="Execute multiple commands in one request")
-    sp_batch.add_argument("commands", help="JSON array of commands")
     sp_batch.add_argument("--stop-on-error", action="store_true",
                           help="Stop executing on first error")
-
-    sub.add_parser("check-update", parents=[shared], help="Check version alignment and updates")
+    sp_batch.add_argument("--input", "-i", dest="input", default=None, required=True,
+                          help='JSON params file (or - for stdin): {"commands":[..],"stopOnError":bool}; avoids shell-quoting')
 
     sp_cat = sub.add_parser("catalog", parents=[shared], help="Manage custom command catalog")
     cat_sub = sp_cat.add_subparsers(dest="catalog_cmd")
@@ -2362,8 +1727,8 @@ def main():
 
     sp_sn_use = sn_sub.add_parser("use", parents=[shared], help="Run a snippet")
     sp_sn_use.add_argument("snippet_id")
-    sp_sn_use.add_argument("--args", dest="snippet_args", default=None,
-                           help="JSON object of arg values")
+    sp_sn_use.add_argument("--input", "-i", dest="input", default=None,
+                           help='JSON file (or - for stdin) of arg values: {"k": "v", …}; avoids shell-quoting')
     sp_sn_use.add_argument("--dry-run", dest="dry_run", action="store_true",
                            help="Print the wrapped submission without executing")
 
@@ -2423,6 +1788,11 @@ def main():
 
     args = p.parse_args()
 
+    # --input: read this command's params from a JSON file (or '-' for stdin), so the
+    # agent can write the payload with its file tool instead of quoting JSON in the
+    # shell.  Payloads (C# code, nested args) are where all the escaping pain lives.
+    _resolve_input(p, args)
+
     # Apply defaults for any shared arg the user didn't pass (SUPPRESS leaves
     # attr unset).  This restores the original UX while preventing subparser
     # overwrites of values given at the top level.
@@ -2432,23 +1802,25 @@ def main():
         if not hasattr(args, k):
             setattr(args, k, v)
 
-    # Resolve `code` from --file for exec
+    # Resolve C# for exec: --file (raw code) or --input (JSON {"code":..}) — exactly one.
     if args.cmd == "exec":
         file = getattr(args, "file", None)
         if file is not None:
-            if args.code is not None:
-                p.error("argument --file: not allowed with positional code")
+            if getattr(args, "code", None) is not None:  # already set by --input
+                p.error("--file cannot be combined with --input")
             try:
-                args.code = Path(file).read_text(encoding="utf-8-sig")
+                args.code = _read_input_text(file)
             except (OSError, UnicodeError) as e:
                 p.error(f"--file: {e}")
             if not args.code.strip():
                 p.error(f"--file: {file} is empty")
-        elif args.code is None:
-            p.error("missing C# code: provide it inline or via --file")
+        elif getattr(args, "code", None) is None:
+            p.error('exec requires --input <file> (JSON {"code":..}) or --file <path>')
 
-    agent_root = args.project or str(Path.cwd())
     root = find_project_root(args.project)
+    # agent_root keys the per-project package-path cache; derive it from the
+    # resolved project root (never raw cwd) so it stays stable across agents/cwd.
+    agent_root = str(root) if root else (args.project or str(Path.cwd()))
 
     # Auto-detect editor port from refresh_state.json when needed for
     # --port (editor mode) or --compile-port fallback (runtime mode).
@@ -2456,12 +1828,15 @@ def main():
     needs_detect = args.port is None or (args.mode == "runtime" and args.compile_port is None)
     if root and needs_detect:
         detected_editor_port = detect_port(root)
-    default_port = DEFAULT_RUNTIME_PORT if args.mode == "runtime" else DEFAULT_EDITOR_PORT
     if args.port is None:
-        if args.mode != "runtime" and detected_editor_port:
+        if args.mode == "runtime":
+            # The player doesn't write refresh_state.json — probe the runtime range
+            # (15500-15509) to find where the in-player service actually landed.
+            args.port = _probe_port(args.ip, DEFAULT_RUNTIME_PORT, 10) or DEFAULT_RUNTIME_PORT
+        elif detected_editor_port:
             args.port = detected_editor_port
         else:
-            args.port = default_port
+            args.port = DEFAULT_EDITOR_PORT
     # In runtime mode, compile/refresh/health still target the editor.
     if args.mode == "runtime" and args.compile_port is None:
         args.compile_port = detected_editor_port or DEFAULT_EDITOR_PORT
@@ -2475,30 +1850,11 @@ def main():
             print(f"Warning: --wait capped to 600s (requested {args.wait}s)", file=sys.stderr)
             args.wait = 600
 
-    # Pre-setup commands
-    if args.cmd == "install-cli":
-        sys.exit(cmd_install_cli(args))
+    # Pre-setup commands (work without the Unity package installed).
     if args.cmd == "setup":
-        copy_rc, copy_msg = _perform_copy(_CLI_DIR, force=False)
-        if copy_rc != 0:
-            # The fixed-path shim/store is the skill entry point. A failed write
-            # must fail setup BEFORE the package manifest is touched: a partial
-            # success (package changed, entry point missing/stale) is worse than a
-            # clean failure.
-            print(copy_msg, file=sys.stderr)
-            sys.exit(copy_rc)
-        rc, installed, pin_tag = cmd_setup(root, args, agent_root)
-        # Pin the project only when setup actually installed/updated the package.
-        # _write_project_pin writes the running (newest) version when it is aligned
-        # with the selected package, else clears any stale pin so the shim auto-picks
-        # the matching store CLI.
-        if rc == 0 and installed and root is not None:
-            _write_project_pin(root, pin_tag)
-        sys.exit(rc)
+        sys.exit(cmd_setup(root, args))
     if args.cmd == "status":
         sys.exit(cmd_status(root, args, agent_root))
-    if args.cmd == "check-update":
-        sys.exit(cmd_check_update(root, args, agent_root))
     if args.cmd == "catalog":
         if root is None:
             print("Error: no Unity project found.", file=sys.stderr)
@@ -2559,7 +1915,7 @@ def main():
     from cli.core_bridge import find_package_dir
     pkg_dir = find_package_dir(root, agent_root)
     if pkg_dir is None:
-        print("Error: C# Console package not found. Run 'cs setup' (or the unity-cli-setup skill) first.", file=sys.stderr)
+        print("Error: C# Console package not found. Install it into the project, then run 'cs setup'.", file=sys.stderr)
         sys.exit(1)
 
     s = _new_session(root, args, pkg_dir)

@@ -1,33 +1,23 @@
----
-name: unity-cli-command
-description: >
-  Structured Unity Editor commands. Covers: GameObject (create/find/modify/destroy/duplicate),
-  component (add/remove/get/modify), transform (get/set), scene management, materials,
-  prefabs (scene instances and direct asset editing), screenshots, play mode, profiling,
-  hierarchy query, asset refresh/recompile, asset management (move/copy/delete/create_folder),
-  selection, session, command listing. Preferred over raw C# execution.
----
-
 # Unity CLI Command
 
 Run framework commands in the Unity Editor via the C# Console command protocol.
-
-> **Running `cs`:** below, `cs` is shorthand for
-> `python "$HOME/.unity-cli-plugin/current/cli/cs.py"` — one stable path, run
-> verbatim without changing directory. If it's not installed yet, run the
-> **unity-cli-setup** skill once first.
 
 ## Command-First Principle
 
 Always prefer `cs command` over `cs exec` when a built-in framework command exists. Only fall back to `cs exec` for ad-hoc C# that no existing command covers.
 
-If no built-in or custom command matches the task, **next** check `unity-cli-snippets` (run `cs snippets search <description>`) before falling back to ad-hoc `cs exec` via `unity-cli-exec-code`. The decision order is: command → snippet → ad-hoc.
+If no built-in or custom command matches the task, **next** check `cs snippets` (run `cs snippets search <description>`) before falling back to ad-hoc `cs exec` via `cs exec`. The decision order is: command → snippet → ad-hoc.
 
 ## Usage
 
+Write the request to a JSON file (your file tool handles all escaping), then:
+
 ```bash
-python "$HOME/.unity-cli-plugin/current/cli/cs.py" command --json --project "$(pwd)" <namespace> <action> ['<args-json>']
+cs command --json --input req.json
 ```
+
+`req.json` is a single object — `{"ns": "<namespace>", "action": "<action>", "args": { … }}`
+(`args` omitted for no-arg commands). `--input -` reads the JSON from stdin instead.
 
 ## Argument & Result Conventions
 
@@ -39,10 +29,10 @@ python "$HOME/.unity-cli-plugin/current/cli/cs.py" command --json --project "$(p
 
 ## Asset Refresh
 
-After writing `.cs` files or modifying assets on disk, trigger a refresh so Unity recompiles. The `unity-cli-refresh` skill wraps the full procedure (play-mode check, exit if needed, refresh, wait). For direct CLI use:
+After writing `.cs` files or modifying assets on disk, trigger a refresh so Unity recompiles. `cs refresh` wraps the full procedure (play-mode check, exit if needed, refresh, wait). For direct CLI use:
 
 ```bash
-python "$HOME/.unity-cli-plugin/current/cli/cs.py" refresh --wait --exit-playmode --json --project "$(pwd)"
+cs refresh --wait --exit-playmode --json
 ```
 
 REPL sessions are cleared on domain reload.
@@ -192,9 +182,9 @@ Lookup order for custom (user-defined) commands:
 2. Read the per-project catalog cache via `cs catalog list --json`. The CLI knows the cached path for this project (default `{project}/.unity-cli/catalog.json`, remembered after first sync).
 3. If the catalog is empty, missing, or stale, fall back to a live query:
    ```bash
-   python "$HOME/.unity-cli-plugin/current/cli/cs.py" list-commands --type custom --json --project "$(pwd)"
+   cs list-commands --type custom --json
    ```
-4. If a catalog refresh is needed, run `cs catalog sync --json` (or use the `unity-cli-refresh-commands` skill).
+4. If a catalog refresh is needed, run `cs catalog sync --json`.
 
 ### Catalog commands
 
@@ -216,48 +206,26 @@ Most commands are **editor-only** (require the Unity Editor, not a standalone pl
 
 ## Examples
 
-Base command for all examples:
+Each block below is the `req.json` content; run it with `cs command --json --input req.json`:
 
-```bash
-python "$HOME/.unity-cli-plugin/current/cli/cs.py" command --json --project "$(pwd)" <namespace> <action> ['<args-json>']
+```json
+{"ns":"editor","action":"status"}
+{"ns":"gameobject","action":"create","args":{"name":"Wall","primitiveType":"Cube"}}
+{"ns":"transform","action":"set","args":{"path":"Wall","position":{"x":0,"y":1,"z":3}}}
+{"ns":"component","action":"get","args":{"gameObjectPath":"Main Camera","typeName":"Camera"}}
+{"ns":"screenshot","action":"scene_view","args":{"savePath":"Assets/screenshot.png"}}
+{"ns":"scene","action":"hierarchy","args":{"depth":3,"includeComponents":true}}
+{"ns":"prefab","action":"asset_hierarchy","args":{"assetPath":"Assets/Prefabs/Player.prefab","depth":2,"includeComponents":true}}
+{"ns":"prefab","action":"asset_add_component","args":{"assetPath":"Assets/Prefabs/Player.prefab","typeName":"BoxCollider","gameObjectPath":"Body"}}
 ```
 
+Discovery / catalog (no payload — plain flags, no `--input`):
+
 ```bash
-# No-arg command
-... editor status
-
-# Create a cube
-... gameobject create '{"name":"Wall","primitiveType":"Cube"}'
-
-# Move it (Vector3 as {x,y,z} object)
-... transform set '{"path":"Wall","position":{"x":0,"y":1,"z":3}}'
-
-# Get component data
-... component get '{"gameObjectPath":"Main Camera","typeName":"Camera"}'
-
-# Screenshot
-... screenshot scene_view '{"savePath":"Assets/screenshot.png"}'
-
-# Scene hierarchy with components
-... scene hierarchy '{"depth":3,"includeComponents":true}'
-
-# Inspect a prefab asset's hierarchy
-... prefab asset_hierarchy '{"assetPath":"Assets/Prefabs/Player.prefab","depth":2,"includeComponents":true}'
-
-# Add a component to a prefab asset (no need to instantiate)
-... prefab asset_add_component '{"assetPath":"Assets/Prefabs/Player.prefab","typeName":"BoxCollider","gameObjectPath":"Body"}'
-
-# Discover all commands (including custom)
-python "$HOME/.unity-cli-plugin/current/cli/cs.py" list-commands --json --project "$(pwd)"
-
-# Discover only custom commands
-python "$HOME/.unity-cli-plugin/current/cli/cs.py" list-commands --type custom --json --project "$(pwd)"
-
-# Sync the custom command catalog to disk
-python "$HOME/.unity-cli-plugin/current/cli/cs.py" catalog sync --json --project "$(pwd)"
-
-# List the cached catalog
-python "$HOME/.unity-cli-plugin/current/cli/cs.py" catalog list --json --project "$(pwd)"
+cs list-commands --json
+cs list-commands --type custom --json
+cs catalog sync --json
+cs catalog list --json
 ```
 
 ## Workflow
@@ -266,5 +234,5 @@ python "$HOME/.unity-cli-plugin/current/cli/cs.py" catalog list --json --project
 2. Run the command with appropriate args
 3. **After writing C# files**, follow the Asset Refresh procedure above (check play mode → exit if needed → refresh)
 4. If no matching command exists in the built-in catalog, run `cs catalog list --json` to check the per-project custom-command cache
-5. If the cache is empty or stale, run `list-commands --type custom` as a live fallback and use the `unity-cli-refresh-commands` skill
-6. If no command covers the request at all, fall back to the `unity-cli-exec-code` skill
+5. If the cache is empty or stale, run `cs list-commands --type custom` as a live fallback, then `cs catalog sync`
+6. If no command covers the request at all, fall back to `cs exec`

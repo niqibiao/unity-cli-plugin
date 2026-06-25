@@ -1,20 +1,4 @@
----
-name: unity-cli-snippets
-description: >
-  Self-evolving library of reusable C# snippets executed via cs exec. Use when
-  performing Unity Editor operations that need custom code: scene queries, batch
-  ops, workflow automation. Library lives in project at .unity-cli/snippets~/
-  and grows through agent-distilled patterns. Triggers on any non-trivial cs
-  exec scenario, recurring Unity automation, or when the user mentions "save as
-  snippet" / "reuse this".
----
-
 # Unity CLI Snippets
-
-> **Running `cs`:** below, `cs` is shorthand for
-> `python "$HOME/.unity-cli-plugin/current/cli/cs.py"` — one stable path, run
-> verbatim without changing directory. If it's not installed yet, run the
-> **unity-cli-setup** skill once first.
 
 ## Decision Order (strict)
 
@@ -46,11 +30,11 @@ The 5 you'll actually use:
 |---------|---------|
 | `cs snippets search <q>` | Top-N lexical hits over id + summary |
 | `cs snippets show <id>` | Full body and metadata for one snippet |
-| `cs snippets use <id> --args '<json>'` | Run with typed args; tracks stats |
+| `cs snippets use <id> --input vals.json` | Run with typed args (JSON file `{"k":"v"}`); tracks stats |
 | `cs snippets add <id> --file <md>` | Validate and register a new snippet |
 | `cs snippets deprecate <id> [--supersede <new>]` | Retire a snippet without deletion |
 
-Full set: `list / show / search / use / add / update / deprecate / prune / stats / doctor` — see `cs snippets --help`. For library health audits and anti-rot cleanup (`doctor`), use the `unity-cli-snippets-audit` skill.
+Full set: `list / show / search / use / add / update / deprecate / prune / stats / doctor` — see `cs snippets --help`. For library health audits and anti-rot cleanup (`doctor`), use `cs snippets doctor`.
 
 ## Snippet Anatomy
 
@@ -143,6 +127,6 @@ No `Quaternion` (use `vector3` Euler or `vector4` raw inside `Run`). No `expr` (
 
 ## Boundary with `cs command` / `cs exec`
 
-- Built-in/custom command available → `cs command` (see `unity-cli-command` skill).
-- One-off ad-hoc → `cs exec` (see `unity-cli-exec-code` skill).
+- Built-in/custom command available → `cs command` (see references/commands.md).
+- One-off ad-hoc → `cs exec` (see references/exec-code.md).
 - Reusable ad-hoc → `cs snippets`.
