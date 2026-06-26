@@ -53,7 +53,9 @@ cd path/to/your/UnityProject      # from the PROJECT, never your home/global dir
 npx skills add niqibiao/unity-cli-skill --copy
 ```
 
-**2 · Initialize:** in your AI agent, run **`unity-cli setup`**.
+**2 · Initialize:**
+
+In your AI agent, run **`unity-cli setup`**.
 
 **Prerequisites:** a skills-compatible agent (e.g. [Claude Code](https://claude.ai/code) or [Codex CLI](https://github.com/openai/codex) 0.139+), Node.js (for `npx`), Unity 2022.3+, Python 3.7+
 
